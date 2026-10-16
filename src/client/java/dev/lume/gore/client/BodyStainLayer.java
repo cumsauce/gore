@@ -105,43 +105,70 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 			root.translateAndRotate(poseStack);
 		}
 
-		// Enter the part's own frame, so the quad rides the part's animation: a
-		// wound on the head follows the head's yaw, one on an arm swings with the
-		// arm. The world-space `outward` then has to be carried into that frame
-		// as well, or the wound would face a direction the body no longer has.
-		part.translateAndRotate(poseStack);
-		float[] local = localise(poseStack, outward);
+		// Everything below happens in the root's frame, which is the frame the
+		// stain's direction was converted into. `supportAlong` walks the part with
+		// ModelPart.visit, which folds the part's own animated transform in, so the
+		// reach it returns is the part's outward face in *this* frame — the same
+		// frame the quad is placed in, which is what keeps the two consistent.
+		float reach = StainAnchor.supportAlong(poseStack, part, outward);
 
-		if (local != null) {
-			Vector3f localOutward = new Vector3f(local[0], local[1], local[2]);
-
-			// Recomputed from the part's current (animated) pose each frame, so the
-			// quad rides the body's transform without depending on it being rigid.
-			float reach = StainAnchor.supportAlong(poseStack, part, localOutward);
-
-			if (Float.isFinite(reach)) {
-				poseStack.translate(localOutward.x() * reach, localOutward.y() * reach, localOutward.z() * reach);
-				StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, localOutward);
-			}
+		if (!Float.isFinite(reach)) {
+			// No usable part: draw nothing rather than park blood in mid-air.
+			poseStack.popPose();
+			return;
 		}
 
+		// The quad rides the part's animation by facing the part's *animated*
+		// outward direction: a head wound turns with the head, a limb wound swings
+		// with the limb. That direction is the part's own transform applied to the
+		// wound direction, taken from the part rather than assumed.
+		Vector3f animated = animatedDirection(poseStack, part, outward);
+
+		if (animated == null) {
+			poseStack.popPose();
+			return;
+		}
+
+		poseStack.translate(outward.x() * reach, outward.y() * reach, outward.z() * reach);
+		StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, animated);
 		poseStack.popPose();
 	}
 
 	/**
-	 * Carries a direction expressed in the space outside {@code poseStack} into
-	 * the space the pose stack currently defines, using the inverse of its
-	 * normal matrix. Returns null when the transform is degenerate.
+	 * Returns the part's own animated transform applied to {@code direction},
+	 * expressed in the space the pose stack currently defines. That is the
+	 * direction the wound faces once the part (a head, an arm) has been posed, so
+	 * a quad submitted with it turns and swings with the part.
+	 *
+	 * <p>The transform is read by visiting the part with an untouched stack and
+	 * comparing where the visit puts it against where the stack already is — i.e.
+	 * the part's contribution isolated from its ancestors'. Returns null when the
+	 * part contributes no usable rotation.
 	 */
-	private static float[] localise(PoseStack poseStack, Vector3f outward) {
-		Matrix4f inverse = new Matrix4f(poseStack.last().pose()).invert();
-		Vector3f local = inverse.transformDirection(new Vector3f(outward));
+	private static Vector3f animatedDirection(PoseStack poseStack, ModelPart part, Vector3f direction) {
+		Matrix4f outer = new Matrix4f(poseStack.last().pose());
+		Matrix4f[] first = new Matrix4f[1];
 
-		if (local.lengthSquared() < 1.0E-8F) {
+		// The first cube the part reports carries the part's own transform; a part
+		// with no cubes of its own has nothing to pose, so keep the raw direction.
+		part.visit(new PoseStack(), (pose, name, index, cube) -> {
+			if (first[0] == null) {
+				first[0] = pose.pose();
+			}
+		});
+
+		if (first[0] == null) {
+			return new Vector3f(direction);
+		}
+
+		// part = outer⁻¹ · (visit matrix). Only its orientation matters.
+		Matrix4f local = new Matrix4f(outer).invert().mul(first[0], new Matrix4f());
+		Vector3f result = local.transformDirection(new Vector3f(direction));
+
+		if (result.lengthSquared() < 1.0E-8F) {
 			return null;
 		}
 
-		local.normalize();
-		return new float[]{local.x(), local.y(), local.z()};
+		return result.normalize();
 	}
 }

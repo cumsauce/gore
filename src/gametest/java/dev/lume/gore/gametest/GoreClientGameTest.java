@@ -1,13 +1,20 @@
 package dev.lume.gore.gametest;
 
+import dev.lume.gore.Decal;
+import dev.lume.gore.client.DecalManager;
+import dev.lume.gore.client.DecalRenderer;
+import java.util.List;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ParticleStatus;
 import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -137,6 +144,63 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.getInput().lookAt(wall);
 			context.waitTicks(20);
 			context.takeScreenshot("gore-splatters");
+
+			// The bloodied sword decorates the hotbar icon, and replacing it with
+			// air just bares the first-person arm, which still carries the weapon
+			// stain — both are dark red inside pixelstat's colour window and would
+			// drown the decal the tail scenes measure. Swap to a clean, unstained
+			// item instead (the attacker's weapon was only needed earlier).
+			singleplayer.getServer().runCommand("item replace entity @p weapon.mainhand with minecraft:stone");
+			context.waitTicks(5);
+
+			// The cow's open wound keeps emitting short-lived blood particles that
+			// randomly cross the frame during the tail screenshots. The second wall
+			// hides the cow itself, but not its spray, so move it far away too.
+			singleplayer.getServer().runCommand(
+					"tp @e[type=minecraft:cow,limit=1] " + (fx + 0.5) + " " + fy + " " + (fz + 200));
+			context.waitTicks(5);
+
+			// Stain-tail orientation (DecalFrame): a clean second wall behind the
+			// player at fz+4 — the cow, teleported to fz+6, now hides behind it.
+			// The player looks at its -Z (NORTH) face, the only face a decal can be
+			// visible on from in front; variant 9 is elongation band 3 / density 0,
+			// a long ellipse with a tail and no satellites. rot=90 points the tail
+			// up, rot=-90 down; tools/pixelstat.py compares the two screenshots'
+			// centroids.
+			singleplayer.getServer().runCommand(
+					"fill " + (fx - 4) + " " + fy + " " + (fz + 4) + " " + (fx + 4) + " " + (fy + 5) + " " + (fz + 4) + " stone");
+			Vec3 wallPoint = new Vec3(fx + 0.5, fy + 1.5, fz + 4);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, wallPoint));
+			context.waitTicks(5);
+
+			context.runOnClient(mc -> {
+				DecalManager.clear();
+				DecalRenderer.clearDrips();
+				DecalManager.addDecals(List.of(new Decal(fx, fy + 1, fz + 4,
+						Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 90f, 9, 0L)));
+			});
+			context.computeOnClient(mc -> {
+				LOGGER.info("[gore-gametest] decals before tail-up: {}", DecalManager.snapshot());
+				return true;
+			});
+			context.waitTicks(15);
+			context.takeScreenshot("gore-tail-up");
+
+			context.runOnClient(mc -> {
+				DecalManager.clear();
+				DecalRenderer.clearDrips();
+				DecalManager.addDecals(List.of(new Decal(fx, fy + 1, fz + 4,
+						Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, -90f, 9, 0L)));
+			});
+			context.computeOnClient(mc -> {
+				LOGGER.info("[gore-gametest] decals before tail-down: {}", DecalManager.snapshot());
+				return true;
+			});
+			context.waitTicks(15);
+			context.takeScreenshot("gore-tail-down");
+
+			// Leave the decals empty for any later scenes.
+			context.runOnClient(mc -> DecalManager.clear());
 		}
 	}
 }

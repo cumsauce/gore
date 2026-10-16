@@ -2,6 +2,7 @@ package dev.lume.gore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import dev.lume.gore.DecalFrame;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +31,14 @@ public final class StainQuad {
 	/** Box size in model units; 64 units is four blocks. */
 	private static final float UNITS = CELL;
 	private static final float BLOCKS = UNITS / 16.0f;
+	/**
+	 * Side length of {@code GoreClient.BLOOD_ATLAS} in texels. {@code ModelPart.Cube}'s
+	 * trailing {@code uScale}/{@code vScale} arguments are the UV divisors (the texture's
+	 * dimensions), not multipliers: the baked polygon stores {@code (texU + offset) / uScale}.
+	 * Passing 1 left the UVs in texel units, so the quad repeat-wrapped the whole atlas
+	 * into a uniform red wash instead of showing one cell.
+	 */
+	private static final float ATLAS_SIZE = 256.0f;
 
 	private static final ModelPart[] VARIANTS = buildVariants();
 	private static final Vector3f MODEL_FRONT = new Vector3f(0.0f, 0.0f, -1.0f);
@@ -44,7 +53,7 @@ public final class StainQuad {
 			int cellY = cell >> 2;
 			ModelPart.Cube cube = new ModelPart.Cube(cellX * CELL - 1, cellY * CELL - 1,
 					-UNITS / 2.0f, -UNITS / 2.0f, 0.0f, UNITS, UNITS, 1.0f,
-					0.0f, 0.0f, 0.0f, false, 1.0f, 1.0f, Set.of(Direction.NORTH));
+					0.0f, 0.0f, 0.0f, false, ATLAS_SIZE, ATLAS_SIZE, Set.of(Direction.NORTH));
 			parts[cell] = new ModelPart(List.of(cube), Map.of());
 		}
 
@@ -82,6 +91,31 @@ public final class StainQuad {
 		poseStack.scale(scale, scale, scale);
 		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
 				light, OverlayTexture.NO_OVERLAY, null);
+		poseStack.popPose();
+	}
+
+	/**
+	 * Like {@link #submit} but the orientation comes from the explicit face
+	 * basis in {@link DecalFrame}: the quad's tail (model −Y) points along
+	 * {@code DecalFrame.tail(face, rot)} and its front (model −Z) along the
+	 * face's outward normal, so the tail follows the droplet's travel on every
+	 * face. {@code color} is passed to the tinted
+	 * {@code submitModelPart(..., UvMapping, int)} overload;
+	 * {@code 0xFFFFFFFF} means untinted.
+	 */
+	public static void submitOnFace(SubmitNodeCollector collector, PoseStack poseStack,
+			int variant, float size, float rot, int light, Direction face, int color) {
+		init();
+
+		Quaternionf orientation = DecalFrame.orientation(face, rot);
+		float scale = size / BLOCKS;
+
+		poseStack.pushPose();
+		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
+		poseStack.rotate(orientation);
+		poseStack.scale(scale, scale, scale);
+		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
+				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 	}
 

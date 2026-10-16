@@ -96,8 +96,8 @@ public final class DecalRenderer {
 				level.addParticle(Gore.BLOOD_DROP, center.x, center.y - decal.size(), center.z, 0.0, -0.08, 0.0);
 			}
 		} else {
-			StainQuad.submit(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),
-					decal.rot(), light, new Vector3f((float) normal.x, (float) normal.y, (float) normal.z));
+			StainQuad.submitOnFace(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),
+					decal.rot(), light, face, 0xFFFFFFFF);
 		}
 
 		poseStack.popPose();

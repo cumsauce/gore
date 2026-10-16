@@ -44,6 +44,8 @@ public class Gore implements ModInitializer {
 
 		PayloadTypeRegistry.clientboundPlay().register(GorePayloads.DecalsPayload.TYPE, GorePayloads.DECALS_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(GorePayloads.DecalsSyncPayload.TYPE, GorePayloads.SYNC_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(StainPayloads.AddPayload.TYPE, StainPayloads.ADD_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(StainPayloads.SyncPayload.TYPE, StainPayloads.SYNC_CODEC);
 
 		Bleeding.init();
 

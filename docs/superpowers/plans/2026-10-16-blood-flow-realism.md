@@ -65,7 +65,7 @@ Inside the existing `afterEvaluate { runs.configureEach { ... } }` block in `bui
 - [ ] **Step 3: Create `tools/pixelstat.py`**
 
 Run: `python3 tools/pixelstat.py src/main/resources/assets/gore/textures/decal/blood_atlas.png 120 14 14 40 128 192 191 255`
-Expected: one line starting `size=256x256 count=` with a count > 0 and `bbox=157,196,162,255` (the current cell‑14 drip strip plus bulb; exact count is not asserted).
+Expected: exactly `size=256x256 count=468 bbox=152,196,167,252 centroid=159.5,229.4` (the current, pre-change cell‑14 drip strip plus its bulb; these are the measured values of the checked-in atlas — if they differ, `pixelstat.py` decodes PNGs differently from `gen_blood_atlas.py`'s writer and that must be fixed before continuing).
 
 - [ ] **Step 4: Build**
 
@@ -148,7 +148,7 @@ In `DecalRenderer.submit`, the non-drip branch calls `StainQuad.submitOnFace(col
 Append to the end of `runTest`, after the `gore-splatters` screenshot:
 1. `fill fx-4 fy fz+4 fx+4 fy+5 fz+4 stone` (a clean second wall behind the player; the cow was teleported to `fz+6`, now hidden behind it).
 2. Look at `(fx+0.5, fy+1.5, fz+4)` (use `context.getInput().lookAt(Vec3)`; if that overload does not exist, call `mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, vec)` inside `runOnClient`). `waitTicks(5)`.
-3. `runOnClient`: `DecalManager.clear(); DecalRenderer.clearDrips(); DecalManager.addDecals(List.of(new Decal(fx, fy+1, fz+4, Direction.SOUTH.get3DDataValue(), 0f, 0f, 0.5f, 90f, 9, 0L)))` — variant 9 = elongation band 3, density 0 (long ellipse with tail, no satellites). `waitTicks(5)`; `takeScreenshot("gore-tail-up")`.
+3. `runOnClient`: `DecalManager.clear(); DecalRenderer.clearDrips(); DecalManager.addDecals(List.of(new Decal(fx, fy+1, fz+4, Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 90f, 9, 0L)))` — variant 9 = elongation band 3, density 0 (long ellipse with tail, no satellites). **Face is NORTH**, not SOUTH: the player stands at `fz` and looks toward `fz+4`, so the wall surface facing them, and the only surface a decal can be visible on, is the block's `-Z` (NORTH) face. A `SOUTH`-face decal at `fz+4` is buried inside the wall and renders nothing. `waitTicks(5)`; `takeScreenshot("gore-tail-up")`.
 4. Same with `rot = -90f`; `takeScreenshot("gore-tail-down")`.
 5. `runOnClient`: `DecalManager.clear()` (so later scenes start clean).
 
@@ -371,7 +371,7 @@ Physics: a run of blood on a vertical wall starts from rest and accelerates unde
     - `public static float beadScale(float f)` = `(float)Math.cbrt(1 − 0.7·f)`.
     - `public static float widthScale(float f)` = `1 − THIN·f`.
   - `DecalRenderer`: `public static boolean isDrip(Decal d)` = `d.variant() == 14` (replaces `born() > 0`); `private static final Set<Decal> DRIPPED` (record equality) — `clearDrips()` unchanged.
-  - `StainQuad.submitDrip(SubmitNodeCollector collector, PoseStack poseStack, float size, float rot, int light, Direction face, float f, int color)` — pose order for the run (model units, `s = size / BLOCKS`): `translate(normal·OFFSET)`, `rotate(DecalFrame.orientation(face, rot))`, `scale(s, s, s)`, `translate(0, 2f, 0)`, `scale(Flow.widthScale(f), f, 1)`, submit `VARIANTS[14]`; the quad then spans model y ∈ [0, 4f], i.e. it hangs from the anchor **downward** (with `rot` pointing the tail up, model +Y is world down). Then pop/push and for the bead: `translate(normal·OFFSET)`, `rotate(...)`, `scale(s,s,s)`, `translate(0, 4f, 0)`, `scale(Flow.beadScale(f))` uniformly, submit `VARIANTS[15]`. Both with the `color` overload.
+  - `StainQuad.submitDrip(SubmitNodeCollector collector, PoseStack poseStack, float size, float rot, int light, Direction face, float f, int color)` — pose order for the run (model units, `s = size / BLOCKS`): `translate(normal·OFFSET)`, `rotate(DecalFrame.orientation(face, rot))`, `scale(s, s, s)`, `translate(0, 2f, 0)`, `scale(Flow.widthScale(f), f, 1)`, submit `VARIANTS[14]`; the quad then spans model y ∈ [0, 4f], i.e. it hangs from the anchor **downward** (with `rot` pointing the tail up, model +Y is world down). Then pop/push and for the bead: `translate(normal·OFFSET)`, `rotate(...)`, `scale(s,s,s)`, `translate(0, 4f + 2·Flow.beadScale(f), 0)`, `scale(Flow.beadScale(f))` uniformly, submit `VARIANTS[15]`. Both with the `color` overload. (The `2·beadScale(f)` term puts the bead's **top edge** at the run's bottom, so the bead always hangs at or below the anchor and never bulges above the wound; the run's top edge is pinned at world offset 0 = the anchor, and its length is `size·f`.)
   - Break-off droplet: in `DecalRenderer.submit`, when `isDrip` and `f ≥ Flow.BREAK_OFF` and `DRIPPED.add(decal)` → `level.addParticle(Gore.BLOOD_DROP, bead.x, bead.y, bead.z, 0, -0.02, 0)` with `bead = center − DecalFrame.tail(face, rot) · (f · size)`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -425,7 +425,7 @@ Expected: `wrote src/main/resources/assets/gore/textures/decal/blood_atlas.png (
 Run: `python3 tools/pixelstat.py src/main/resources/assets/gore/textures/decal/blood_atlas.png 120 14 14 40 128 192 191 255`
 Expected: `count=384 bbox=157,192,162,255`.
 Run: `python3 tools/pixelstat.py src/main/resources/assets/gore/textures/decal/blood_atlas.png 120 14 14 40 192 192 255 255`
-Expected: `count` between 200 and 250; bbox within `215,216,232,231` ± 1 px per edge.
+Expected: `count` between 200 and 250; `bbox=216,215,231,232` ± 1 px per edge (a 9 px (vertical) × 8 px (horizontal) ellipse centred at cell-local (31.5, 31.5)).
 
 - [ ] **Step 6: Rewrite `StainQuad.submitDrip` and the drip branch of `DecalRenderer.submit`; add `isDrip`; change `BloodItemDecorations` to `nextInt(12)`**
 
@@ -433,7 +433,7 @@ Compute `long age = level.getGameTime() - decal.born(); float f = Flow.length(ag
 
 - [ ] **Step 7: Add the drip growth scene to the game test**
 
-Append after the Task 4 scenes: look at `(fx+0.5, fy+2.5, fz+4)` (the clean wall; top area, above any later stains); `runOnClient`: `DecalManager.clear(); DecalRenderer.clearDrips(); long born = mc.level.getGameTime(); DecalManager.addDecals(List.of(new Decal(fx, fy+2, fz+4, Direction.SOUTH.get3DDataValue(), 0f, 0.3f, 0.6f, 90f, 14, born)))`. Then `waitTicks(5)` → `takeScreenshot("gore-drip-05")`; `waitTicks(25)` → `"gore-drip-30"`; `waitTicks(90)` → `"gore-drip-120"`. Then `runOnClient`: `DecalManager.clear()`.
+Append after the Task 4 scenes: look at `(fx+0.5, fy+2.5, fz+4)` (the clean wall; top area, above any later stains); `runOnClient`: `DecalManager.clear(); DecalRenderer.clearDrips(); long born = mc.level.getGameTime(); DecalManager.addDecals(List.of(new Decal(fx, fy+2, fz+4, Direction.NORTH.get3DDataValue(), 0f, 0.3f, 0.6f, 90f, 14, born)))` (NORTH face, same reason as Task 2: the player looks toward `fz+4` from `fz`). Then `waitTicks(5)` → `takeScreenshot("gore-drip-05")`; `waitTicks(25)` → `"gore-drip-30"`; `waitTicks(90)` → `"gore-drip-120"`. Then `runOnClient`: `DecalManager.clear()`.
 
 - [ ] **Step 8: Run the game test and check the run grows downward**
 
@@ -505,7 +505,7 @@ Run: same command. Expected: `BUILD SUCCESSFUL`, 5 tests passed. Also run `--tes
 
 - [ ] **Step 5: Add the drying scene to the game test**
 
-Append after the Task 5 scenes: look at `(fx+0.5, fy+1.5, fz+4)`; `runOnClient`: `DecalManager.clear(); DecalRenderer.clearDrips(); DecalManager.addDecals(List.of(new Decal(fx, fy+1, fz+4, Direction.SOUTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 0, mc.level.getGameTime())))` (variant 0: round, clean). `waitTicks(5)` → `takeScreenshot("gore-dry-wet")`; `waitTicks(130)` → `takeScreenshot("gore-dry-dry")` (with `dryScale = 0.02`: wet until tick 24, fully dry at tick 120).
+Append after the Task 5 scenes: look at `(fx+0.5, fy+1.5, fz+4)`; `runOnClient`: `DecalManager.clear(); DecalRenderer.clearDrips(); DecalManager.addDecals(List.of(new Decal(fx, fy+1, fz+4, Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 0, mc.level.getGameTime())))` (variant 0: round, clean; NORTH face, same reason as Task 2). `waitTicks(5)` → `takeScreenshot("gore-dry-wet")`; `waitTicks(130)` → `takeScreenshot("gore-dry-dry")` (with `dryScale = 0.02`: wet until tick 24, fully dry at tick 120).
 
 - [ ] **Step 6: Run the game test and check the colour shift**
 

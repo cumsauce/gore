@@ -1,0 +1,50 @@
+package dev.lume.gore.client;
+
+import dev.lume.gore.Decal;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import net.minecraft.resources.Identifier;
+
+/** Client-side mirror of the server's decal list for the current level. */
+public final class DecalManager {
+	public static final int MAX_DECALS = 1024;
+
+	private static final Deque<Decal> DECALS = new ArrayDeque<>();
+	private static Identifier dimension;
+
+	private DecalManager() {
+	}
+
+	/** Adds incrementally placed decals, evicting the oldest past the budget. */
+	public static void addDecals(List<Decal> decals) {
+		for (Decal decal : decals) {
+			while (DECALS.size() >= MAX_DECALS) {
+				DECALS.pollFirst();
+			}
+
+			DECALS.addLast(decal);
+		}
+	}
+
+	/** Replaces the list with an authoritative snapshot for the given level. */
+	public static void sync(Identifier dimensionId, List<Decal> decals) {
+		if (dimension == null || !dimension.equals(dimensionId)) {
+			DECALS.clear();
+			dimension = dimensionId;
+		}
+
+		DECALS.clear();
+		DECALS.addAll(decals);
+	}
+
+	public static void clear() {
+		DECALS.clear();
+		dimension = null;
+	}
+
+	public static List<Decal> snapshot() {
+		return new ArrayList<>(DECALS);
+	}
+}

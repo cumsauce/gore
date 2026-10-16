@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "gore",
+	"version": "${version}",
+	"name": "Gore",
+	"description": "Blood particles and persistent splatter decals. Purely visual carnage.",
+	"authors": [
+		"lume"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/gore/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"dev.lume.gore.Gore"
+		],
+		"client": [
+			"dev.lume.gore.client.GoreClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

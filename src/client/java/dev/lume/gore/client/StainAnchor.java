@@ -152,22 +152,27 @@ public final class StainAnchor {
 	}
 
 	/**
-	 * Returns the part's extent along {@code outward}, in the space of the pose
-	 * the part is about to be rendered in: the largest dot product of any of the
-	 * part's (or its children's) cube corners, after the pose transform, with the
-	 * outward vector. Translating by {@code outward * reach} then places the pose
-	 * on the part's front face along the wound direction, so a stain quad
-	 * submitted there rests exactly on the animated body.
+	 * Returns the part's own extent along {@code outward}, in the frame the pose
+	 * stack currently defines, reading the part's cubes directly rather than
+	 * through {@link ModelPart#visit}.
 	 *
-	 * <p>Returns {@link Float#NEGATIVE_INFINITY} for an empty part, which callers
+	 * <p>A caller that has already pushed the part's transform must use this one:
+	 * {@code visit} applies that transform itself, so walking the part there would
+	 * apply it twice and measure along the wrong direction. This variant pushes
+	 * nothing, so the measurement is in exactly the frame the caller's next
+	 * {@code translate} will be.
+	 *
+	 * <p>{@code outward} is in the pose stack's frame. Returns
+	 * {@link Float#NEGATIVE_INFINITY} when the part has no cubes, which callers
 	 * treat as "skip this stain".
 	 */
-	public static float supportAlong(PoseStack poseStack, ModelPart part, Vector3f outward) {
+	public static float ownExtentAlong(PoseStack poseStack, ModelPart part, Vector3f outward) {
 		float[] support = {Float.NEGATIVE_INFINITY};
+		Matrix4f matrix = poseStack.last().pose();
 
-		part.visit(poseStack, (pose, name, index, cube) -> {
-			Matrix4f matrix = pose.pose();
-
+		part.visit(new PoseStack(), (pose, name, index, cube) -> {
+			// visit hands back the part's own transform; its cubes are the ones
+			// this part carries, still in this part's local coordinates.
 			for (int corner = 0; corner < 8; corner++) {
 				Vector3f point = new Vector3f(
 						(corner & 1) == 0 ? cube.minX : cube.maxX,

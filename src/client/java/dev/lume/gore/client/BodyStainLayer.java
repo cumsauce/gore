@@ -97,78 +97,62 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 			return;
 		}
 
-		poseStack.pushPose();
 		ModelPart root = model.root();
 		ModelPart part = anchor.get();
+
+		// Anchor the quad to the part itself. Pushing the part's own transform and
+		// submitting inside it is what makes the stain ride that part's animation:
+		// a wound on the head turns with the head, one on a limb swings with the
+		// limb, because both the position and the facing are then expressed in the
+		// part's frame. `outward` arrives in the entity's root frame, so it is
+		// carried into the part's frame with the inverse of everything pushed since.
+		poseStack.pushPose();
 
 		if (part != root) {
 			root.translateAndRotate(poseStack);
 		}
 
-		// Everything below happens in the root's frame, which is the frame the
-		// stain's direction was converted into. `supportAlong` walks the part with
-		// ModelPart.visit, which folds the part's own animated transform in, so the
-		// reach it returns is the part's outward face in *this* frame — the same
-		// frame the quad is placed in, which is what keeps the two consistent.
-		float reach = StainAnchor.supportAlong(poseStack, part, outward);
+		part.translateAndRotate(poseStack);
 
-		if (!Float.isFinite(reach)) {
-			// No usable part: draw nothing rather than park blood in mid-air.
+		Vector3f local = localDirection(poseStack, outward);
+
+		if (local == null) {
 			poseStack.popPose();
 			return;
 		}
 
-		// The quad rides the part's animation by facing the part's *animated*
-		// outward direction: a head wound turns with the head, a limb wound swings
-		// with the limb. That direction is the part's own transform applied to the
-		// wound direction, taken from the part rather than assumed.
-		Vector3f animated = animatedDirection(poseStack, part, outward);
+		// The part's own surface along the wound direction, measured in the part's
+		// frame. `ownExtentAlong` reads the part's cubes directly, without pushing
+		// anything further, so measurement and placement share this one frame.
+		float reach = StainAnchor.ownExtentAlong(poseStack, part, local);
 
-		if (animated == null) {
-			poseStack.popPose();
-			return;
+		if (Float.isFinite(reach)) {
+			poseStack.translate(local.x() * reach, local.y() * reach, local.z() * reach);
+			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, local);
 		}
 
-		poseStack.translate(outward.x() * reach, outward.y() * reach, outward.z() * reach);
-		StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, animated);
 		poseStack.popPose();
 	}
 
 	/**
-	 * Returns the part's own animated transform applied to {@code direction},
-	 * expressed in the space the pose stack currently defines. That is the
-	 * direction the wound faces once the part (a head, an arm) has been posed, so
-	 * a quad submitted with it turns and swings with the part.
-	 *
-	 * <p>The transform is read by visiting the part with an untouched stack and
-	 * comparing where the visit puts it against where the stack already is — i.e.
-	 * the part's contribution isolated from its ancestors'. Returns null when the
-	 * part contributes no usable rotation.
+	 * Carries a direction expressed in the frame outside {@code poseStack} into
+	 * the frame the pose stack currently defines, by the inverse of the transform
+	 * it has accumulated. Only the orientation matters, so the result is
+	 * normalised and any scale the transform introduced cancels out. Returns null
+	 * when the transform is degenerate or the result unusable.
 	 */
-	private static Vector3f animatedDirection(PoseStack poseStack, ModelPart part, Vector3f direction) {
-		Matrix4f outer = new Matrix4f(poseStack.last().pose());
-		Matrix4f[] first = new Matrix4f[1];
+	private static Vector3f localDirection(PoseStack poseStack, Vector3f direction) {
+		Matrix4f inverse = new Matrix4f(poseStack.last().pose()).invert();
+		Vector3f local = inverse.transformDirection(new Vector3f(direction));
 
-		// The first cube the part reports carries the part's own transform; a part
-		// with no cubes of its own has nothing to pose, so keep the raw direction.
-		part.visit(new PoseStack(), (pose, name, index, cube) -> {
-			if (first[0] == null) {
-				first[0] = pose.pose();
-			}
-		});
-
-		if (first[0] == null) {
-			return new Vector3f(direction);
-		}
-
-		// part = outer⁻¹ · (visit matrix). Only its orientation matters.
-		Matrix4f local = new Matrix4f(outer).invert().mul(first[0], new Matrix4f());
-		Vector3f result = local.transformDirection(new Vector3f(direction));
-
-		if (result.lengthSquared() < 1.0E-8F) {
+		if (!Float.isFinite(local.x()) || !Float.isFinite(local.y()) || !Float.isFinite(local.z())) {
 			return null;
 		}
 
-		return result.normalize();
+		if (local.lengthSquared() < 1.0E-8F) {
+			return null;
+		}
+
+		return local.normalize();
 	}
 }

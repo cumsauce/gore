@@ -70,6 +70,12 @@ public final class Bleeding {
 		}
 
 		markGear(victim, source, severity, random);
+
+		// Body stain for the hit itself: same clamped severity and impact direction
+		// the particles and decals already used, then tell the watching clients.
+		GoreStain stain = StainWounds.create(source, impactDir, severity, random);
+		StainStore.of(level).add(victim.getId(), stain);
+		StainSync.sendAdd(level, victim);
 	}
 
 	private static Vec3 impactDirection(LivingEntity victim, DamageSource source) {

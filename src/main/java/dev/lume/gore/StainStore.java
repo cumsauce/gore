@@ -29,9 +29,11 @@ public class StainStore {
 	}
 
 	/**
-	 * Drops every cached store. Called when a level unloads (e.g. returning to the
-	 * title screen), because entity ids restart per world: keeping stale stores
-	 * would let fresh entities inherit an unrelated world's stains.
+	 * Drops every cached store. Only called when the whole world unloads (server
+	 * stop / returning to the title screen), because entity ids restart per world:
+	 * keeping stale stores would let fresh entities inherit an unrelated world's
+	 * stains. Never on a per-level unload — this clears all levels at once, and
+	 * other dimensions may still be running with live entities.
 	 */
 	public static void clear() {
 		BY_LEVEL.clear();

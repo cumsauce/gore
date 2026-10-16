@@ -3,6 +3,7 @@ package dev.lume.gore;
 import com.mojang.serialization.Codec;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityLevelChangeEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -49,8 +50,20 @@ public class Gore implements ModInitializer {
 
 		Bleeding.init();
 
-		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> Sync.sendTo(handler.player));
-		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL.register((player, from, to) -> Sync.sendTo(player));
+		// Join replay: both the decal map and the body-stain map for the player's level.
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			Sync.sendTo(handler.player);
+			StainSync.sendTo(handler.player);
+		});
+		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL.register((player, from, to) -> {
+			Sync.sendTo(player);
+			StainSync.sendTo(player);
+		});
+		// StainStore.clear() drops EVERY level's store at once, so it must only run
+		// when the whole world stops (server stop / return to the title screen).
+		// Calling it on a per-level unload would wipe the stains of every other
+		// dimension that is still running alongside it.
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> StainStore.clear());
 		ServerTickEvents.END_SERVER_TICK.register(Wash::tick);
 
 		LOGGER.info("Gore initialized.");

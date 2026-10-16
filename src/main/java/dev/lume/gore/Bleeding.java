@@ -29,7 +29,6 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class Bleeding {
 	private static final float SPLATTER_SEVERITY = 0.22f;
-	private static final float MIST_SEVERITY = 0.35f;
 	private static final int MAX_DECALS_PER_HIT = 12;
 	/** Half-angle of the impact cone, in the tangent the jitter is measured in. */
 	private static final float SPRAY_SPREAD = 0.6f;
@@ -148,26 +147,19 @@ public final class Bleeding {
 		return new Vec3(0.0, -0.6, 0.0);
 	}
 
+	/**
+	 * Emits the impact spray as a directed cone: every particle starts at the
+	 * wound origin with its own velocity from {@link SprayModel}, sent with
+	 * {@code count == 0} so the {@code dx,dy,dz} arguments are that exact
+	 * per-particle velocity instead of a randomised puff.
+	 */
 	private static void spawnParticles(ServerLevel level, Vec3 wound, Vec3 dir, float severity, RandomSource random) {
-		int drops = 3 + Math.round(severity * 12.0f);
-		level.sendParticles(Gore.BLOOD_DROP, wound.x, wound.y, wound.z, drops, 0.3, 0.2, 0.3, 0.05);
-
-		if (severity < MIST_SEVERITY) {
-			return;
+		for (Vec3 drop : SprayModel.dropVelocities(dir, severity, random)) {
+			level.sendParticles(Gore.BLOOD_DROP, wound.x, wound.y, wound.z, 0, drop.x, drop.y, drop.z, 1.0);
 		}
 
-		int mist = 1 + Math.round(severity * 5.0f);
-		level.sendParticles(Gore.BLOOD_MIST,
-				wound.x + dir.x * 0.2, wound.y + dir.y * 0.2, wound.z + dir.z * 0.2,
-				mist, dir.x * 0.25 + 0.06, dir.y * 0.25 + 0.06, dir.z * 0.25 + 0.06, 0.25);
-
-		int darts = 1 + Math.round(severity * 3.0f);
-
-		for (int i = 0; i < darts; i++) {
-			Vec3 dart = dir.add(random.nextGaussian() * 0.12, random.nextGaussian() * 0.12 - 0.05, random.nextGaussian() * 0.12)
-					.normalize()
-					.scale(0.35 + 0.4 * severity);
-			level.sendParticles(Gore.BLOOD_MIST, wound.x, wound.y, wound.z, 0, dart.x, dart.y, dart.z, 1.0);
+		for (Vec3 mist : SprayModel.mistVelocities(dir, severity, random)) {
+			level.sendParticles(Gore.BLOOD_MIST, wound.x, wound.y, wound.z, 0, mist.x, mist.y, mist.z, 1.0);
 		}
 	}
 
@@ -178,7 +170,7 @@ public final class Bleeding {
 			int rays = 3 + Math.round(severity * 12.0f);
 
 			for (int i = 0; i < rays && placed.size() < MAX_DECALS_PER_HIT; i++) {
-				Vec3 rayDir = coneDirection(dir, random, SPRAY_SPREAD);
+				Vec3 rayDir = SprayModel.coneDirection(dir, random, SPRAY_SPREAD);
 				Vec3 from = wound.add(rayDir.scale(0.3));
 				Vec3 to = from.add(rayDir.scale(1.6 + random.nextDouble() * 2.4));
 				BlockHitResult hit = level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, victim));
@@ -319,16 +311,6 @@ public final class Bleeding {
 				(float) Mth.clamp(rel.dot(Decal.axis1(face)), -limit, limit),
 				(float) Mth.clamp(rel.dot(Decal.axis2(face)), -limit, limit),
 				size, rot, 14 + random.nextInt(2), born);
-	}
-
-	private static Vec3 coneDirection(Vec3 dir, RandomSource random, float spread) {
-		Vec3 u = Math.abs(dir.y) < 0.9 ? new Vec3(0.0, 1.0, 0.0).cross(dir) : new Vec3(1.0, 0.0, 0.0).cross(dir);
-		u = u.normalize();
-		Vec3 v = dir.cross(u);
-		double theta = random.nextDouble() * Math.PI * 2.0;
-		// Bias toward the axis so the spray is densest along the impact direction.
-		double radius = spread * random.nextFloat() * random.nextFloat();
-		return dir.add(u.scale(Math.cos(theta) * radius)).add(v.scale(Math.sin(theta) * radius)).normalize();
 	}
 
 	private static void markGear(LivingEntity victim, DamageSource source, float severity, RandomSource random) {

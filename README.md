@@ -2,7 +2,7 @@
 
 Blood that behaves like blood: creatures bleed when they are cut, hard impacts throw it, and it stays where it lands. A Fabric mod for Minecraft 26.3.
 
-Status: **0.1.1**, on the [releases page](https://github.com/cumsauce/gore/releases).
+Status: **0.1.2**, on the [releases page](https://github.com/cumsauce/gore/releases).
 
 ## The idea
 
@@ -37,6 +37,14 @@ You need JDK 25.
 ```
 
 Building inside a VM from a folder shared with the host over VirtioFS needs `-Pgore.runDir=<dir on a local disk>` for the game runs, because Minecraft's world session lock needs `F_FULLFSYNC`, which that filesystem does not support. The default already points the run dirs at `~/gore-run`.
+
+`runClient` cannot open a window on a machine whose GLFW/NSGL backend finds no pixel format (a VM). The mod's client game test can still be seen there, because it drives the real client on its own render thread:
+
+```sh
+./gradlew runClientGameTest     # renders the mod and writes screenshots
+```
+
+It builds a stone room, wounds a cow with an arrow for a directed spray, and writes screenshots to `~/gore-run/clientGameTest/screenshots/`. In CI it runs only on a manual dispatch with "Run the client game test" ticked, under Xvfb and Mesa's software Vulkan.
 
 ## Releasing
 

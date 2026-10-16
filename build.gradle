@@ -28,13 +28,27 @@ loom {
 	// `-Pgore.runDir=<dir>` move it somewhere else (CI uses that).
 	def runDirOverride = providers.gradleProperty('gore.runDir')
 
+	def localRunDir = { String runName ->
+		if (runDirOverride.isPresent()) {
+			return "${runDirOverride.get()}/${runName}"
+		}
+		return "${System.getProperty('user.home')}/gore-run/${runName}"
+	}
+
 	runs {
 		configureEach {
-			if (runDirOverride.isPresent()) {
-				runDir = "${runDirOverride.get()}/${name}"
-			} else {
-				runDir = "${System.getProperty('user.home')}/gore-run/${name}"
-			}
+			runDir = localRunDir(name)
+		}
+	}
+
+	// Loom's client game-test configuration hardcodes its run dir to
+	// `build/run/clientGameTest`, *after* the `runs` block above, so it has to be
+	// moved here or the game test creates its world on the shared volume and dies
+	// on the save lock. `clientGameTest` inherits from `client`; both are run
+	// configurations, so this catches whichever one is registered.
+	afterEvaluate {
+		runs.configureEach {
+			runDir = localRunDir(name)
 		}
 	}
 }
@@ -54,6 +68,23 @@ processResources {
 
 	filesMatching("fabric.mod.json") {
 		expand "version": version
+	}
+}
+
+// The only way to see the mod render on a machine whose `runClient` cannot get a
+// GL context (a VM, where GLFW's NSGL backend finds no pixel format) is Loom's
+// client game-test run configuration: it drives the real client on its own render
+// thread. `runClientGameTest` also needs `-Pgore.runDir=<dir on a local disk>`,
+// because the game test creates a world and Minecraft's save lock needs
+// F_FULLFSYNC, which a VirtioFS share lacks.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "gore-gametest"
+		// Nothing in this mod is server-testable: bleeding, decals and particles
+		// are all rendering, so there are no server game tests to run.
+		enableGameTests = false
+		enableClientGameTests = true
 	}
 }
 

@@ -20,9 +20,9 @@ public class BloodDropParticle extends SingleQuadParticle {
 		this.xd = vx + (this.random.nextDouble() - 0.5) * 0.04;
 		this.yd = vy + (this.random.nextDouble() - 0.5) * 0.04;
 		this.zd = vz + (this.random.nextDouble() - 0.5) * 0.04;
-		this.rCol = 1.0f;
-		this.gCol = 1.0f;
-		this.bCol = 1.0f;
+		this.rCol = 0.55f;
+		this.gCol = 0.06f;
+		this.bCol = 0.055f;
 		this.alpha = 1.0f;
 	}
 

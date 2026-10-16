@@ -1,15 +1,21 @@
 name: CI
 
 # Modelled on Stalker's: Gore is pure Java, so one job builds the jar and
-# checks its contents, and a version tag publishes the release. There is
-# nothing to run headless — the mod's work is particles and decals, which
-# need a GPU — so there is no gametest job.
+# checks its contents, and a version tag publishes the release. The mod's work
+# is particles and decals, which need a GPU, so the only way to see it is Loom's
+# client game test: it drives the real client and screenshots it. That job runs
+# under Xvfb with Mesa's software Vulkan, and a manual run is enough for it.
 on:
   push:
     branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      gametest:
+        description: Run the client game test (slow, software renderer)
+        type: boolean
+        default: false
 
 # Actions from outside GitHub's own `actions/` are pinned to a commit, since
 # a tag can be moved to other code; the comment names the release it was.
@@ -59,6 +65,35 @@ jobs:
         with:
           name: gore-mod
           path: build/libs/gore-*.jar
+
+  # The client game test renders the mod for real: a stone room, a wounded cow,
+  # arrows for a directed spray, then screenshots. It needs a GPU context, which
+  # on a runner means Xvfb and Mesa's software Vulkan (lavapipe), as in yakvc
+  # and earshot. Only a manual run with "Run the client game test" ticked does
+  # it, because it is slow and the software renderer is not the real thing.
+  gametest:
+    if: inputs.gametest
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y xvfb mesa-vulkan-drivers libvulkan1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - name: Client gametest
+        run: ./gradlew runClientGameTest -Pgore.runDir="$RUNNER_TEMP/gore-run"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gametest-screenshots
+          path: |
+            ${{ runner.temp }}/gore-run/clientGameTest/screenshots/
+            ${{ runner.temp }}/gore-run/clientGameTest/logs/
 
   # On a version tag: a GitHub prerelease with the jar.
   release:

@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "gore-gametest",
+	"version": "0.0.0",
+	"name": "Gore game tests",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"dev.lume.gore.gametest.GoreClientGameTest"
+		]
+	},
+	"depends": {
+		"gore": "*"
+	}
+}

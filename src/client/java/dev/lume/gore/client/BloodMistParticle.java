@@ -22,9 +22,9 @@ public class BloodMistParticle extends SingleQuadParticle {
 		this.xd = vx + (this.random.nextDouble() - 0.5) * 0.06;
 		this.yd = vy + (this.random.nextDouble() - 0.5) * 0.06;
 		this.zd = vz + (this.random.nextDouble() - 0.5) * 0.06;
-		this.rCol = 1.0f;
-		this.gCol = 1.0f;
-		this.bCol = 1.0f;
+		this.rCol = 0.62f;
+		this.gCol = 0.075f;
+		this.bCol = 0.07f;
 		this.alpha = 0.9f;
 	}
 

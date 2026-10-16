@@ -2,11 +2,13 @@
 
 Blood that behaves like blood: creatures bleed when they are cut, hard impacts throw it, and it stays where it lands. A Fabric mod for Minecraft 26.3.
 
-Status: **0.1.3**, on the [releases page](https://github.com/cumsauce/gore/releases).
+Status: **0.2.0**, on the [releases page](https://github.com/cumsauce/gore/releases).
 
 ## The idea
 
-Hit something and it bleeds. A glancing blow leaves it dripping; a solid one makes it gush. Hit something hard enough — an arrow, a sprint crit, an axe — and the blood leaves the body with force: a mist sprays in the direction the blow was travelling, and whatever it meets on the way becomes a splatter. Blood that finds a wall, a ceiling or a floor sticks there and stays. Blood that doesn't falls to the ground as droplets.
+Hit something and it bleeds. A glancing blow leaves it dripping; a solid one makes it gush. Hit something hard enough — an arrow, a sprint crit, an axe — and the blood leaves the body with force: a mist sprays in a cone along the direction the blow was travelling, and whatever it meets on the way becomes a splatter. Blood that finds a wall, a ceiling or a floor sticks there and stays, and on a wall a heavy splat runs downwards into a drip. Blood that doesn't falls to the ground as droplets.
+
+The splatter is built from bloodstain-pattern physics rather than a starburst. A wound throws blood one way, not outwards in every direction: what lands is a cone of stains whose shape records how hard each one hit — close to round when it struck the face square on, stretched into a long ellipse with a tail when it struck at a glancing angle — with fine satellite droplets cast ahead of the bigger ones.
 
 It is all cosmetic. Bleeding never costs health or damages anything; the wound is what the hit already did. Nothing is added to the game that a vanilla client would need to understand.
 
@@ -14,7 +16,9 @@ It is all cosmetic. Bleeding never costs health or damages anything; the wound i
 
 - **Severity** comes from the damage actually taken, measured against the creature's maximum health, so a hit that nearly kills a chicken is not the same as one that barely dents a ravager.
 - **Direction** is the projectile's own velocity when there is a projectile, otherwise the line from attacker to victim, otherwise the damage source's position. A blow from below throws blood upward into the ceiling; a hit from the side paints the wall behind.
-- **Splatter** is a set of jittered rays cast from the wound, clipped against block collision shapes. Each ray that lands stores a decal: which block, which face, where on the face, how big, and which cell of the decal texture atlas to use. Twelve of the sixteen atlas cells are impact splats, biased by direction; the last four are the pools a heavy wound leaves on the ground.
+- **Splatter** is a set of jittered rays cast from the wound in a cone along the blow, clipped against block collision shapes. Each ray that lands stores a decal: which block, which face, where on the face, how big, which way it is turned, and which cell of the decal texture atlas to use. The angle it struck at picks the stain's elongation — square on gives a round blot, glancing gives a long-tailed ellipse — and the blow's force picks the droplet size and how many satellites it casts, so a harder hit throws more, smaller drops.
+- **Drips run.** A heavy splat on a vertical face adds a drip that grows downwards over a few seconds, its bead sliding to the tip, and drops a droplet off the end when it finishes.
+- **Bodies get bloody.** Anything that takes damage wears a stain at the wound, stuck to its own model, so it moves and animates with the creature. Hits accumulate up to a per-entity cap, oldest recycled. It applies to your own body, every mob, and other players.
 - **Decals persist.** They live in a per-level `SavedData` capped at 1024, oldest evicted first, written to `dimensions/<dim>/data/gore/decals.dat`. They survive restarts, and they are per-dimension.
 - **Everyone sees them.** The server is authoritative: new decals go to every player within 96 blocks as they are made, and a joining player — or one changing dimension — receives the full list for the level they are entering.
 - **Gear gets bloody.** The weapon that drew the blood, and the victim's armor, each carry a `gore:blood` component they accumulate over hits. Player gear rinses clean in water; the component is per-item, so the blood is on the item wherever it goes.
@@ -44,7 +48,7 @@ Building inside a VM from a folder shared with the host over VirtioFS needs `-Pg
 ./gradlew runClientGameTest     # renders the mod and writes screenshots
 ```
 
-It builds a stone room, has the player cut a cow with a sword for a directed spray (which also bloodies the held sword), and writes screenshots to `~/gore-run/clientGameTest/screenshots/`. In CI it runs only on a manual dispatch with "Run the client game test" ticked, under Xvfb and Mesa's software Vulkan.
+It builds a stone room, has the player cut a cow with a sword for a directed spray (which also bloodies the held sword and stains the cow's body), and writes screenshots to `~/gore-run/clientGameTest/screenshots/`. In CI it runs only on a manual dispatch with "Run the client game test" ticked, under Xvfb and Mesa's software Vulkan.
 
 ## Releasing
 
@@ -58,9 +62,10 @@ git tag v0.1.0 && git push origin main v0.1.0
 ## Known gaps
 
 - The decals are the whole of the persistence: there is no fading, no drying, no washing blood off a wall. They stay until the budget evicts them.
-- Mobs do not rinse their own gear in water; only players do.
-- Rain does not disturb decals.
-- A wounded creature does not leave a trail as it walks.
+- Blood is laid down once and does not respond to the world afterwards: rain does not disturb it, and a wounded creature does not leave a trail as it walks.
+- A body stain is placed from what caused the damage, not from a real hit point — Minecraft's damage event does not report one — so the wound is inferred onto the nearest sensible part of the model, and a creature whose model has no part for it simply shows nothing.
+- Body stains live in memory for the life of the server, so they do not survive a restart, unlike the wall decals.
+- Nothing washes blood off a body yet: water rinses the gear a player is carrying, and that is all.
 
 ## License
 

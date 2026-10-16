@@ -207,13 +207,18 @@ public final class StainAnchor {
 	public static float ownExtentAlong(PoseStack poseStack, ModelPart part, Vector3f outward) {
 		float[] support = {Float.NEGATIVE_INFINITY};
 
-		// The pose stack at this point is the part's frame. `visit` walks the part
-		// and its children, handing each cube a pose that already places it in the
-		// caller's frame. Undoing the caller's frame maps each cube into the frame
-		// `outward` is expressed in: for the part's own cubes that is the part's own
-		// local frame, and for a child's cubes it is the child's offset from the
-		// part, which is what measuring them as part of this part's extent needs.
-		Matrix4f undoPartFrame = new Matrix4f(poseStack.last().pose()).invert();
+		// `visit` walks the part and its children from a fresh pose, so the pose it
+		// hands a cube is that cube's transform down from the part's *parent*, not
+		// from the caller: the part's own transform for its own cubes, and the
+		// part's transform composed with a child's for that child's. Undoing the
+		// part's own transform therefore maps the part's cubes to their raw
+		// coordinates and a child's to its offset within the part — the frame
+		// `outward` was already reduced into — no matter what the caller pushed
+		// above. Using the caller's whole stack here instead would leave the entity
+		// and root transforms stranded inside the mapping.
+		PoseStack partOnly = new PoseStack();
+		part.translateAndRotate(partOnly);
+		Matrix4f undoPartFrame = new Matrix4f(partOnly.last().pose()).invert();
 
 		part.visit(new PoseStack(), (pose, name, index, cube) -> {
 			Matrix4f toPartFrame = new Matrix4f(undoPartFrame).mul(pose.pose());

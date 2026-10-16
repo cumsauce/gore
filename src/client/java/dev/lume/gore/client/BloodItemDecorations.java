@@ -8,8 +8,8 @@ import net.minecraft.world.item.ItemStack;
 
 /** Draws blood splats from the decal atlas over item icons that carry the blood component. */
 public final class BloodItemDecorations {
-	private static final float TEXTURE_SIZE = 128.0f;
-	private static final float CELL_PIXELS = 32.0f;
+	private static final float TEXTURE_SIZE = 256.0f;
+	private static final float CELL_PIXELS = 64.0f;
 	private static final float INSET = 1.0f;
 
 	private BloodItemDecorations() {

@@ -26,8 +26,8 @@ import org.joml.Vector3f;
 public final class StainQuad {
 	/** Pushes the quad off the surface it rests on, in world units. */
 	private static final float OFFSET = 0.006f;
-	private static final int CELL = 32;
-	/** Box size in model units; 32 units is two blocks. */
+	private static final int CELL = 64;
+	/** Box size in model units; 64 units is four blocks. */
 	private static final float UNITS = CELL;
 	private static final float BLOCKS = UNITS / 16.0f;
 

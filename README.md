@@ -1,8 +1,8 @@
 # Gore
 
-Blood that behaves like blood: creatures bleed when they are cut, hard impacts throw it, and it stays where it lands. A server-side Fabric mod for Minecraft 26.1.2.
+Blood that behaves like blood: creatures bleed when they are cut, hard impacts throw it, and it stays where it lands. A Fabric mod for Minecraft 26.3.
 
-Status: **0.1.0**, on the [releases page](https://github.com/cumsauce/gore/releases).
+Status: **0.1.1**, on the [releases page](https://github.com/cumsauce/gore/releases).
 
 ## The idea
 
@@ -22,7 +22,7 @@ It is all cosmetic. Bleeding never costs health or damages anything; the wound i
 
 ## Install
 
-Needs [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.5+ and [Fabric API](https://modrinth.com/mod/fabric-api). Drop `gore-<version>.jar` into `mods/`. Minecraft 26.1.2, Java 25.
+Needs [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.5+ and [Fabric API](https://modrinth.com/mod/fabric-api). Drop `gore-<version>.jar` into `mods/`. Minecraft 26.3, Java 25.
 
 It goes on the **server**, and also on the **client** if you want to see any of it — all the drawing is client-side, so with the mod only on the server nothing appears at all.
 

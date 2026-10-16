@@ -3,6 +3,8 @@ package dev.lume.gore.gametest;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ParticleStatus;
 import net.minecraft.world.entity.EntityTypes;
@@ -20,11 +22,16 @@ import org.slf4j.LoggerFactory;
  * world is superflat with its surface near y = -60, so every coordinate is derived
  * from the player rather than assumed.
  *
- * <p>The wounds are dealt by a summoned zombie standing behind the cow, not by the
- * {@code /damage} command: {@code /damage ... minecraft:generic} has no attacker and
- * no projectile, so the mod's impact direction falls back to straight down and every
- * splatter lands on the floor. A real attacker makes the blood spray sideways, which
- * is what puts it on the wall.
+ * <p>The wounds are dealt with {@code /damage ... minecraft:player_attack by @p}, which
+ * makes the player the causing entity. Without an attacker the mod's impact direction
+ * falls back to straight down and every splatter lands on the floor; with one, the
+ * blood sprays away from the player, which is what puts it on the wall. The same
+ * causing entity is what lets the mod stain the weapon: {@code getWeaponItem()}
+ * resolves to the attacker's main hand, so the held sword is the item to inspect.
+ *
+ * <p>The weapon stain is an item decoration, which the client draws on the GUI icon
+ * rather than the first-person hand model, so the proof is a screenshot of the
+ * inventory with the bloodied sword in the hotbar.
  */
 @SuppressWarnings("UnstableApiUsage")
 public class GoreClientGameTest implements FabricClientGameTest {
@@ -48,7 +55,7 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			BlockPos wall = new BlockPos(fx, fy, fz - 4);
 			BlockPos cow = new BlockPos(fx, fy, fz - 2);
 
-			singleplayer.getServer().runCommand("time set midnight");
+			singleplayer.getServer().runCommand("time set noon");
 			singleplayer.getServer().runCommand("weather clear");
 			singleplayer.getServer().runCommand("difficulty easy");
 			singleplayer.getServer().runCommand(
@@ -76,23 +83,40 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			float pitch = context.computeOnClient(mc -> mc.player.getXRot());
 			LOGGER.info("[gore-gametest] cows near player: {} pitch after lookAt: {}", nearby, pitch);
 
-			// Wound the cow with arrows fired from the player's side. An arrow is a
-			// real projectile: the mod reads its velocity, so the spray is directed
-			// and the splatters land on the wall behind the cow. Two arrows of about
-			// 15 each on a 60-health cow is severity 0.25, above the splatter
-			// threshold, and leaves the cow alive for the screenshot. A summoned
-			// arrow lands more than its "damage" value -- the velocity adds to it --
-			// so the value is a starting point, not the final hit.
+			// Put a weapon in hand; the mod stains whatever the attacker holds.
+			singleplayer.getServer().runCommand("item replace entity @p weapon.mainhand with minecraft:iron_sword");
+			context.waitTicks(5);
+
+			// Wound the cow as the player. Two 25-damage hits is severity ~0.42 each
+			// on a 60-health cow (past both the mist and splatter thresholds) and
+			// leaves it alive; the ~20-tick hurt immunity is why the loop waits
+			// longer than that between hits. Blood accumulates on the sword, so by
+			// the end the icon carries several splats.
 			for (int i = 0; i < 2; i++) {
-				singleplayer.getServer().runCommand("execute at @p run summon minecraft:arrow ~ ~1 " + (fz - 1.05)
-						+ " {damage:11.0d,Motion:[0.0d,0.0d,-3.0d],pickup:4b}");
+				singleplayer.getServer().runCommand(
+						"damage @e[type=minecraft:cow,limit=1] 25 minecraft:player_attack by @p");
 				context.waitTicks(25);
 			}
 
-			context.waitTicks(30);
+			// Shoot quickly: the blood mist only lives about a second.
+			context.waitTicks(5);
 			context.takeScreenshot("gore-bleeding");
 
-			// Look at the wall the splatters landed on.
+			// The stain lives on the item icon, which the GUI draws; the first-person
+			// hand model is not where decorations render. Open the inventory so the
+			// bloodied sword is plainly visible in the hotbar row.
+			LocalPlayer clientPlayer = context.computeOnClient(mc -> mc.player);
+			context.runOnClient(mc -> mc.setScreenAndShow(new InventoryScreen(clientPlayer)));
+			context.waitTicks(10);
+			context.takeScreenshot("gore-gear");
+			context.runOnClient(mc -> mc.setScreenAndShow(null));
+			context.waitTicks(5);
+
+			// Look at the wall the splatters landed on. Move the cow out of the way
+			// first, since it stands between the player and the wall.
+			singleplayer.getServer().runCommand(
+					"tp @e[type=minecraft:cow,limit=1] " + (fx + 0.5) + " " + fy + " " + (fz + 6));
+			context.waitTicks(5);
 			context.getInput().lookAt(wall);
 			context.waitTicks(20);
 			context.takeScreenshot("gore-splatters");

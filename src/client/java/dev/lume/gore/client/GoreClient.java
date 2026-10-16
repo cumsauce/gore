@@ -13,7 +13,7 @@ import net.minecraft.client.renderer.texture.SimpleTexture;
 import net.minecraft.resources.Identifier;
 
 public class GoreClient implements ClientModInitializer {
-	public static final Identifier BLOOD_ATLAS = Gore.id("decal/blood_atlas");
+	public static final Identifier BLOOD_ATLAS = Gore.id("textures/decal/blood_atlas.png");
 
 	@Override
 	public void onInitializeClient() {

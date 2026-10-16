@@ -16,13 +16,14 @@ import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
 
-/** Submits blood decal quads as custom geometry into the level render collector. */
+/** Renders blood decal quads on block faces through the level submit pipeline. */
 public final class DecalRenderer {
 	private static final float CELL = 0.25f;
 	private static final float MARGIN = 0.015f;
 	private static final float OFFSET = 0.006f;
 	private static final float[] CORNER_A = {-1.0f, 1.0f, 1.0f, -1.0f};
 	private static final float[] CORNER_B = {-1.0f, -1.0f, 1.0f, 1.0f};
+
 	private static RenderType renderType;
 
 	private DecalRenderer() {
@@ -41,13 +42,14 @@ public final class DecalRenderer {
 
 		PoseStack poseStack = context.poseStack();
 		Vec3 camera = context.levelState().cameraRenderState.pos;
+
 		poseStack.pushPose();
 		poseStack.translate(-camera.x, -camera.y, -camera.z);
-		context.submitNodeCollector().submitCustomGeometry(poseStack, renderType, (pose, buffer) -> draw(pose, buffer, decals));
+		context.submitNodeCollector().submitCustomGeometry(poseStack, renderType, (pose, buffer) -> draw(buffer, pose, decals));
 		poseStack.popPose();
 	}
 
-	private static void draw(PoseStack.Pose pose, VertexConsumer buffer, List<Decal> decals) {
+	private static void draw(VertexConsumer buffer, PoseStack.Pose pose, List<Decal> decals) {
 		ClientLevel level = Minecraft.getInstance().level;
 
 		for (Decal decal : decals) {

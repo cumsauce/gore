@@ -53,12 +53,9 @@ public final class Bleeding {
 		Vec3 wound = new Vec3(victim.getX(), victim.getY() + victim.getBbHeight() * 0.62, victim.getZ())
 				.add(impactDir.scale(0.25));
 
-		Gore.LOGGER.debug("[gore-test] {} took {} damage, severity {} dir {}", victim.getName().getString(), damageTaken, severity, impactDir);
-
 		spawnParticles(level, wound, impactDir, severity, random);
 
 		List<Decal> placed = collectDecals(level, victim, wound, impactDir, severity, random);
-		Gore.LOGGER.debug("[gore-test] decals placed: {}", placed.size());
 
 		if (!placed.isEmpty()) {
 			DecalStore store = level.getDataStorage().computeIfAbsent(DecalStore.TYPE);
@@ -77,16 +74,19 @@ public final class Bleeding {
 
 	private static Vec3 impactDirection(LivingEntity victim, DamageSource source) {
 		Entity direct = source.getDirectEntity();
+		Entity attacker = source.getEntity();
 
-		if (direct != null && direct != victim) {
+		// A projectile is its own entity, distinct from whoever fired it; its flight
+		// direction is the spray direction. A melee hit names the attacker as both the
+		// direct and causing entity, and the attacker's own movement (walking, falling)
+		// says nothing about where the blood should go, so it is skipped below.
+		if (direct != null && direct != victim && direct != attacker) {
 			Vec3 velocity = direct.getDeltaMovement();
 
 			if (velocity.lengthSqr() > 1.0e-4) {
 				return velocity.normalize();
 			}
 		}
-
-		Entity attacker = source.getEntity();
 
 		if (attacker != null && attacker != victim) {
 			Vec3 away = victim.position().subtract(attacker.position());
@@ -197,7 +197,6 @@ public final class Bleeding {
 
 	private static void markGear(LivingEntity victim, DamageSource source, float severity, RandomSource random) {
 		ItemStack weapon = source.getWeaponItem();
-		Gore.LOGGER.debug("[gore-test] weapon null={} empty={}", weapon == null, weapon != null && weapon.isEmpty());
 
 		if (weapon != null && !weapon.isEmpty()) {
 			addBlood(weapon, severity * 0.8f, random);
@@ -208,10 +207,8 @@ public final class Bleeding {
 
 			if (!armor.isEmpty()) {
 				float chance = 0.2f + severity * 0.5f;
-				boolean roll = random.nextFloat() < chance;
-				Gore.LOGGER.debug("[gore-test] armor {} chance {} roll {}", slot, chance, roll);
 
-				if (roll) {
+				if (random.nextFloat() < chance) {
 					addBlood(armor, severity, random);
 				}
 			}
@@ -221,7 +218,6 @@ public final class Bleeding {
 	private static void addBlood(ItemStack stack, float severity, RandomSource random) {
 		Integer previous = stack.get(Gore.BLOOD);
 		int amount = Math.min(100, (previous == null ? 0 : previous) + 8 + Math.round(45.0f * severity) + random.nextInt(8));
-		Gore.LOGGER.debug("[gore-test] addBlood on {} -> {} (prev {})", stack.getItem(), amount, previous);
 		stack.set(Gore.BLOOD, amount);
 	}
 }

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -27,8 +28,18 @@ public class StainStore {
 		return BY_LEVEL.computeIfAbsent(level.dimension(), key -> new StainStore());
 	}
 
+	/**
+	 * Drops every cached store. Called when a level unloads (e.g. returning to the
+	 * title screen), because entity ids restart per world: keeping stale stores
+	 * would let fresh entities inherit an unrelated world's stains.
+	 */
+	public static void clear() {
+		BY_LEVEL.clear();
+	}
+
 	/** Adds a stain, evicting the entity's oldest stain once the cap is reached. */
 	public void add(int entityId, GoreStain stain) {
+		Objects.requireNonNull(stain, "stain");
 		List<GoreStain> list = byEntity.computeIfAbsent(entityId, id -> new ArrayList<>());
 		while (list.size() >= MAX_STAINS) {
 			list.remove(0);
@@ -46,8 +57,13 @@ public class StainStore {
 		byEntity.remove(entityId);
 	}
 
-	/** Returns an immutable copy of every entity's stain list. */
+	/**
+	 * Returns an immutable copy of every entity's stain list. Both the map and
+	 * each value list are deep copies, so callers cannot mutate store state.
+	 */
 	public Map<Integer, List<GoreStain>> entries() {
-		return Map.copyOf(byEntity);
+		Map<Integer, List<GoreStain>> copy = new HashMap<>();
+		byEntity.forEach((entityId, list) -> copy.put(entityId, List.copyOf(list)));
+		return Map.copyOf(copy);
 	}
 }

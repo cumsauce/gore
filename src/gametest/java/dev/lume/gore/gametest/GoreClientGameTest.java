@@ -201,6 +201,32 @@ public class GoreClientGameTest implements FabricClientGameTest {
 
 			// Leave the decals empty for any later scenes.
 			context.runOnClient(mc -> DecalManager.clear());
+
+			// Task 4: the directed spray. Re-summon the cow where the earlier wounds
+			// stood and strike it from the player's left: the damage-source position
+			// (fx-3, fy+1, fz-2.5) is the fallback for impactDirection when the blow
+			// has no causing entity ("at" rather than "by"), so the jet travels +X —
+			// screen-right for a player facing -Z. With drag-based droplet ballistics
+			// the jet must visibly reach the right of the frame two ticks after the
+			// hit, then have landed or been removed forty ticks later (only stains
+			// and body blood remain).
+			singleplayer.getServer().runCommand("kill @e[type=minecraft:cow]");
+			context.waitTicks(5);
+			singleplayer.getServer().runCommand(
+					"summon minecraft:cow " + (fx + 0.5) + " " + fy + " " + (fz - 2.5) + " "
+							+ "{NoAI:1b,PersistenceRequired:1b,Silent:1b,Invulnerable:0b,Health:200f,"
+							+ "attributes:[{id:\"minecraft:max_health\",base:200d}]}");
+			context.waitTicks(5);
+			context.getInput().lookAt(cow);
+			context.waitTicks(5);
+
+			singleplayer.getServer().runCommand(
+					"damage @e[type=minecraft:cow,limit=1] 120 minecraft:player_attack at "
+							+ (fx - 3) + " " + (fy + 1) + " " + (fz - 2.5));
+			context.waitTicks(2);
+			context.takeScreenshot("gore-spray");
+			context.waitTicks(40);
+			context.takeScreenshot("gore-spray-settled");
 		}
 	}
 }

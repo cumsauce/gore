@@ -206,17 +206,26 @@ public final class StainAnchor {
 	 */
 	public static float ownExtentAlong(PoseStack poseStack, ModelPart part, Vector3f outward) {
 		float[] support = {Float.NEGATIVE_INFINITY};
-		Matrix4f matrix = poseStack.last().pose();
+
+		// The pose stack at this point is the part's frame. `visit` walks the part
+		// and its children, handing each cube a pose that already places it; the
+		// part's own transform is what the caller pushed, so taking it back out of
+		// each visited pose puts every cube — the part's own and its children's —
+		// into the part's frame, which is the frame the caller measures in.
+		Matrix4f partFrame = new Matrix4f(poseStack.last().pose());
 
 		part.visit(new PoseStack(), (pose, name, index, cube) -> {
-			// visit hands back the part's own transform; its cubes are the ones
-			// this part carries, still in this part's local coordinates.
+			Matrix4f toPartFrame = new Matrix4f(pose.pose());
+			toPartFrame.mul(partFrame.invert(new Matrix4f()));
+
 			for (int corner = 0; corner < 8; corner++) {
 				Vector3f point = new Vector3f(
 						(corner & 1) == 0 ? cube.minX : cube.maxX,
 						(corner & 2) == 0 ? cube.minY : cube.maxY,
 						(corner & 4) == 0 ? cube.minZ : cube.maxZ);
-				matrix.transformPosition(point);
+				// `pose` is in the caller's frame; undo the caller's frame so the
+				// point lands in the frame `outward` is expressed in.
+				toPartFrame.transformPosition(point);
 				support[0] = Math.max(support[0], point.dot(outward));
 			}
 		});

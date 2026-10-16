@@ -50,6 +50,14 @@ loom {
 	afterEvaluate {
 		runs.configureEach {
 			runDir = localRunDir(name)
+
+			// Seed the spray RNG for the client game test so decal placement is
+			// replayable across runs; gore.dryScale is read by the drying system
+			// and is inert until then.
+			if (name == "clientGameTest") {
+				vmArg "-Dgore.seed=20261016"
+				vmArg "-Dgore.dryScale=0.02"
+			}
 		}
 	}
 }

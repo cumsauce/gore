@@ -2,6 +2,7 @@ package dev.lume.gore;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.networking.v1.PlayerLookup;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -36,7 +37,34 @@ public final class Bleeding {
 	private static final float DRIP_SEVERITY = 0.55f;
 	private static final float DRIP_CHANCE = 0.5f;
 
+	/**
+	 * Counts hits while {@code gore.seed} is set, so a seeded session can replay
+	 * each hit's spray: hit {@code n} draws from {@code seed + n}.
+	 */
+	private static final AtomicLong HIT_COUNTER = new AtomicLong();
+
 	private Bleeding() {
+	}
+
+	/**
+	 * The RNG a hit's spray is drawn from. With the {@code gore.seed} system
+	 * property set (game tests), each hit gets a fresh RandomSource seeded with
+	 * the property plus a hit counter, so decal placement is replayable. Without
+	 * it — or if the property is not a long — the victim's own RNG is used and
+	 * normal gameplay is unchanged.
+	 */
+	static RandomSource hitRandom(LivingEntity victim) {
+		String seed = System.getProperty("gore.seed");
+
+		if (seed != null) {
+			try {
+				return RandomSource.create(Long.parseLong(seed.trim()) + HIT_COUNTER.getAndIncrement());
+			} catch (NumberFormatException ignored) {
+				// Unparseable: fall through to the victim's own RNG.
+			}
+		}
+
+		return victim.getRandom();
 	}
 
 	public static void init() {
@@ -52,7 +80,7 @@ public final class Bleeding {
 			return;
 		}
 
-		RandomSource random = victim.getRandom();
+		RandomSource random = hitRandom(victim);
 		float severity = Mth.clamp(damageTaken / Math.max(4.0f, victim.getMaxHealth()), 0.08f, 1.0f);
 		Vec3 impactDir = impactDirection(victim, source);
 		Vec3 wound = new Vec3(victim.getX(), victim.getY() + victim.getBbHeight() * 0.62, victim.getZ())

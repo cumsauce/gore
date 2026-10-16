@@ -9,6 +9,7 @@ import java.util.WeakHashMap;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -149,6 +150,43 @@ public final class StainAnchor {
 			case FOOT -> resolve(model, Region.LEG, outward);
 			case BODY -> singlePart(model);
 		};
+	}
+
+	/**
+	 * Carries a direction expressed in the entity's root frame into the part's own
+	 * frame, using the part's <em>resting</em> pose — its initial pose, the one its
+	 * live animation is applied on top of.
+	 *
+	 * <p>This is what makes a stain welded: the direction comes back fixed in the
+	 * part's frame, so when the part animates, the part's own transform carries
+	 * the stain with it. Dividing out the part's <em>live</em> pose instead would
+	 * cancel precisely the motion being asked for.
+	 *
+	 * <p>Returns null when the direction is unusable.
+	 */
+	public static Vector3f restingDirection(ModelPart part, Vector3f outward) {
+		PoseStack poseStack = new PoseStack();
+		PartPose live = part.storePose();
+
+		// Emit the part's resting transform by resetting it to its initial pose,
+		// asking it for its transform, then putting the live pose back. Nothing is
+		// drawn in between, so this does not disturb the model.
+		part.resetPose();
+		part.translateAndRotate(poseStack);
+		part.loadPose(live);
+
+		Vector3f local = new Matrix4f(poseStack.last().pose()).invert()
+				.transformDirection(new Vector3f(outward));
+
+		if (!Float.isFinite(local.x()) || !Float.isFinite(local.y()) || !Float.isFinite(local.z())) {
+			return null;
+		}
+
+		if (local.lengthSquared() < 1.0E-8F) {
+			return null;
+		}
+
+		return local.normalize();
 	}
 
 	/**

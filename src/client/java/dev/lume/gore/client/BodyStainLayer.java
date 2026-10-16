@@ -14,7 +14,6 @@ import net.minecraft.client.renderer.entity.layers.RenderLayer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 /**
@@ -100,12 +99,23 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 		ModelPart root = model.root();
 		ModelPart part = anchor.get();
 
-		// Anchor the quad to the part itself. Pushing the part's own transform and
-		// submitting inside it is what makes the stain ride that part's animation:
-		// a wound on the head turns with the head, one on a limb swings with the
-		// limb, because both the position and the facing are then expressed in the
-		// part's frame. `outward` arrives in the entity's root frame, so it is
-		// carried into the part's frame with the inverse of everything pushed since.
+		// The stain is welded: its placement is a fixed direction *in the part's own
+		// frame*, chosen once from the wound. The part's live animation then carries
+		// it — a head yawing swings the stain round with it, a limb swinging takes
+		// its stain along — because the direction never has the animation divided
+		// back out of it. Deriving it per frame from the world direction instead
+		// would cancel exactly the motion we want.
+		//
+		// `outward` is in the entity's root frame, so it is carried into the part's
+		// frame through the part's *resting* pose (its initial pose, before
+		// animation). That is the same frame `translateAndRotate` below builds on
+		// top of, so a part at rest lands the stain exactly where the wound was.
+		Vector3f local = StainAnchor.restingDirection(part, outward);
+
+		if (local == null) {
+			return;
+		}
+
 		poseStack.pushPose();
 
 		if (part != root) {
@@ -114,16 +124,9 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 
 		part.translateAndRotate(poseStack);
 
-		Vector3f local = localDirection(poseStack, outward);
-
-		if (local == null) {
-			poseStack.popPose();
-			return;
-		}
-
-		// The part's own surface along the wound direction, measured in the part's
-		// frame. `ownExtentAlong` reads the part's cubes directly, without pushing
-		// anything further, so measurement and placement share this one frame.
+		// The part's surface along the wound direction, in the part's own frame.
+		// `ownExtentAlong` reads the part's cubes directly without pushing anything,
+		// so measurement and placement share this one frame.
 		float reach = StainAnchor.ownExtentAlong(poseStack, part, local);
 
 		if (Float.isFinite(reach)) {
@@ -132,27 +135,5 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 		}
 
 		poseStack.popPose();
-	}
-
-	/**
-	 * Carries a direction expressed in the frame outside {@code poseStack} into
-	 * the frame the pose stack currently defines, by the inverse of the transform
-	 * it has accumulated. Only the orientation matters, so the result is
-	 * normalised and any scale the transform introduced cancels out. Returns null
-	 * when the transform is degenerate or the result unusable.
-	 */
-	private static Vector3f localDirection(PoseStack poseStack, Vector3f direction) {
-		Matrix4f inverse = new Matrix4f(poseStack.last().pose()).invert();
-		Vector3f local = inverse.transformDirection(new Vector3f(direction));
-
-		if (!Float.isFinite(local.x()) || !Float.isFinite(local.y()) || !Float.isFinite(local.z())) {
-			return null;
-		}
-
-		if (local.lengthSquared() < 1.0E-8F) {
-			return null;
-		}
-
-		return local.normalize();
 	}
 }

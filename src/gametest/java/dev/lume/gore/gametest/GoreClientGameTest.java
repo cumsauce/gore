@@ -102,6 +102,26 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.waitTicks(5);
 			context.takeScreenshot("gore-bleeding");
 
+			// The body stain rides the cow's own model, so the proof is a screenshot
+			// of the cow itself: aim at it and shoot. The wound faces the attacker
+			// (the impact direction points away from them, and the stain faces back
+			// along it), which is the side the camera is on.
+			context.getInput().lookAt(cow);
+			context.waitTicks(10);
+			context.takeScreenshot("gore-body");
+
+			// The whole point of the stain is that it is welded to the body, so it
+			// must follow the cow when the cow turns. Spin the cow a half turn and
+			// shoot again: the stains have to travel with the limbs they landed on
+			// rather than staying behind in the world or sliding to another part.
+			singleplayer.getServer().runCommand(
+					"tp @e[type=minecraft:cow,limit=1] " + (fx + 0.5) + " " + fy + " " + (fz - 2.5) + " 180 0");
+			context.waitTicks(10);
+			context.takeScreenshot("gore-body-turned");
+			singleplayer.getServer().runCommand(
+					"tp @e[type=minecraft:cow,limit=1] " + (fx + 0.5) + " " + fy + " " + (fz - 2.5) + " 0 0");
+			context.waitTicks(5);
+
 			// The stain lives on the item icon, which the GUI draws; the first-person
 			// hand model is not where decorations render. Open the inventory so the
 			// bloodied sword is plainly visible in the hotbar row.

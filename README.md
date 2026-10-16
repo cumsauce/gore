@@ -2,7 +2,7 @@
 
 Blood that behaves like blood: creatures bleed when they are cut, hard impacts throw it, and it stays where it lands. A Fabric mod for Minecraft 26.3.
 
-Status: **0.1.2**, on the [releases page](https://github.com/cumsauce/gore/releases).
+Status: **0.1.3**, on the [releases page](https://github.com/cumsauce/gore/releases).
 
 ## The idea
 
@@ -18,7 +18,7 @@ It is all cosmetic. Bleeding never costs health or damages anything; the wound i
 - **Decals persist.** They live in a per-level `SavedData` capped at 1024, oldest evicted first, written to `dimensions/<dim>/data/gore/decals.dat`. They survive restarts, and they are per-dimension.
 - **Everyone sees them.** The server is authoritative: new decals go to every player within 96 blocks as they are made, and a joining player — or one changing dimension — receives the full list for the level they are entering.
 - **Gear gets bloody.** The weapon that drew the blood, and the victim's armor, each carry a `gore:blood` component they accumulate over hits. Player gear rinses clean in water; the component is per-item, so the blood is on the item wherever it goes.
-- **Rendering** is done through the level render collector: decals are drawn as lit, textured quads offset a few millimetres off the block face so they never z-fight with it, and each is lit by the block behind it. Particles and item-icon splats are drawn by the client's own paths.
+- **Rendering** happens in the level's own world pass: each decal is a lit, textured quad seated a few millimetres off the block face so it never z-fights, lit by the block it sits on. 26.3's custom-geometry submit path draws nothing, so decals ride the same model pass the entities do — one baked single-face model per atlas cell. Particles and item-icon splats are drawn by the client's own paths.
 
 ## Install
 
@@ -44,7 +44,7 @@ Building inside a VM from a folder shared with the host over VirtioFS needs `-Pg
 ./gradlew runClientGameTest     # renders the mod and writes screenshots
 ```
 
-It builds a stone room, wounds a cow with an arrow for a directed spray, and writes screenshots to `~/gore-run/clientGameTest/screenshots/`. In CI it runs only on a manual dispatch with "Run the client game test" ticked, under Xvfb and Mesa's software Vulkan.
+It builds a stone room, has the player cut a cow with a sword for a directed spray (which also bloodies the held sword), and writes screenshots to `~/gore-run/clientGameTest/screenshots/`. In CI it runs only on a manual dispatch with "Run the client game test" ticked, under Xvfb and Mesa's software Vulkan.
 
 ## Releasing
 

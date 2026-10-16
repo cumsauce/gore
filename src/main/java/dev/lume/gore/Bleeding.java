@@ -171,8 +171,12 @@ public final class Bleeding {
 				Decal pool = decalAt(hit, severity, random, 12 + random.nextInt(2));
 
 				if (pool != null) {
-					placed.add(new Decal(pool.x(), pool.y(), pool.z(), pool.face(), pool.u(), pool.v(),
-							0.5f + 0.3f * severity, pool.rot(), pool.variant()));
+					float poolSize = 0.5f + 0.3f * severity;
+					float poolLimit = Math.max(0.0f, 0.5f - poolSize * 0.5f);
+					placed.add(new Decal(pool.x(), pool.y(), pool.z(), pool.face(),
+							(float) Mth.clamp(pool.u(), -poolLimit, poolLimit),
+							(float) Mth.clamp(pool.v(), -poolLimit, poolLimit),
+							poolSize, pool.rot(), pool.variant()));
 				}
 			}
 		}
@@ -189,9 +193,11 @@ public final class Bleeding {
 		}
 
 		Vec3 rel = hit.getLocation().subtract(Vec3.atCenterOf(pos));
-		float u = (float) Mth.clamp(rel.dot(Decal.axis1(face)), -0.45, 0.45);
-		float v = (float) Mth.clamp(rel.dot(Decal.axis2(face)), -0.45, 0.45);
 		float size = 0.3f + 0.35f * random.nextFloat() + severity * 0.15f;
+		// Keep the whole quad on the struck face; otherwise blood floats in the air past the edge.
+		float limit = Math.max(0.0f, 0.5f - size * 0.5f);
+		float u = (float) Mth.clamp(rel.dot(Decal.axis1(face)), -limit, limit);
+		float v = (float) Mth.clamp(rel.dot(Decal.axis2(face)), -limit, limit);
 		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(), u, v, size, random.nextFloat() * 360.0f, variant);
 	}
 

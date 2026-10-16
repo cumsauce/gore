@@ -30,7 +30,7 @@ public class GoreClient implements ClientModInitializer {
 				context.client().execute(() -> DecalManager.sync(payload.dimension(), payload.decals())));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> DecalManager.clear());
 
-		LevelRenderEvents.COLLECT_SUBMITS.register(DecalRenderer::collect);
+		LevelRenderEvents.AFTER_TRANSLUCENT_TERRAIN.register(DecalRenderer::render);
 		ExtractItemDecorationsCallback.EVENT.register(BloodItemDecorations::extract);
 
 		Gore.LOGGER.info("Gore client initialized.");

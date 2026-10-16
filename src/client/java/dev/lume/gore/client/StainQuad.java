@@ -84,4 +84,31 @@ public final class StainQuad {
 				light, OverlayTexture.NO_OVERLAY, null);
 		poseStack.popPose();
 	}
+
+	/**
+	 * Like {@link #submit} but a drip: the run's top edge stays anchored at the
+	 * pose origin while the run grows downward as {@code progress} goes 0..1, the
+	 * bulb at its tip. At progress 0 nothing is drawn; at 1 the run is {@code size}
+	 * long.
+	 */
+	public static void submitDrip(SubmitNodeCollector collector, PoseStack poseStack,
+			int variant, float size, float rot, int light, Vector3f outward, float progress) {
+		init();
+
+		Quaternionf orientation = new Quaternionf().rotateTo(MODEL_FRONT, outward);
+		float scale = size / BLOCKS;
+
+		poseStack.pushPose();
+		poseStack.translate(outward.x() * OFFSET, outward.y() * OFFSET, outward.z() * OFFSET);
+		poseStack.rotate(orientation);
+		poseStack.rotateDegrees(Axis.ZP, rot);
+		// In cube-block units the quad spans Y in [-2, 2]. Drop it so its top edge
+		// (+2) sits on the origin, then grow downward about that edge.
+		poseStack.translate(0.0, -BLOCKS / 2.0, 0.0);
+		poseStack.scale(1.0f, progress, 1.0f);
+		poseStack.scale(scale, scale, scale);
+		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
+				light, OverlayTexture.NO_OVERLAY, null);
+		poseStack.popPose();
+	}
 }

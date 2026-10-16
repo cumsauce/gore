@@ -57,7 +57,10 @@ public class GoreClient implements ClientModInitializer {
 				context.client().execute(() -> DecalManager.addDecals(payload.decals())));
 		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsSyncPayload.TYPE, (payload, context) ->
 				context.client().execute(() -> DecalManager.sync(payload.dimension(), payload.decals())));
-		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> DecalManager.clear());
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+			DecalManager.clear();
+			DecalRenderer.clearDrips();
+		});
 
 		ClientPlayNetworking.registerGlobalReceiver(StainPayloads.AddPayload.TYPE, (payload, context) ->
 				context.client().execute(() -> {

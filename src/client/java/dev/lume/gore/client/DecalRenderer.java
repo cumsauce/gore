@@ -2,13 +2,17 @@ package dev.lume.gore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.lume.gore.Decal;
+import dev.lume.gore.Gore;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.LightCoordsUtil;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
@@ -23,7 +27,17 @@ import org.joml.Vector3f;
  * goes through the model feature instead, which is the same path entities use.
  */
 public final class DecalRenderer {
+	/** Ticks a drip takes to run its full length (4 seconds). */
+	private static final int DRIP_TICKS = 80;
+	/** Birth times of drips whose falling drop has already been spawned. */
+	private static final Set<Long> DRIPPED = new HashSet<>();
+
 	private DecalRenderer() {
+	}
+
+	/** Forgets completed drips; called on disconnect. */
+	public static void clearDrips() {
+		DRIPPED.clear();
 	}
 
 	public static void render(LevelRenderContext context) {
@@ -71,8 +85,21 @@ public final class DecalRenderer {
 
 		poseStack.pushPose();
 		poseStack.translate(center.x, center.y, center.z);
-		StainQuad.submit(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),
-				decal.rot(), light, new Vector3f((float) normal.x, (float) normal.y, (float) normal.z));
+
+		if (decal.born() > 0L && level != null) {
+			// A drip: animate the run downward, and drop a droplet when it bottoms out.
+			float progress = Mth.clamp((level.getGameTime() - decal.born()) / (float) DRIP_TICKS, 0.0f, 1.0f);
+			StainQuad.submitDrip(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),
+					decal.rot(), light, new Vector3f((float) normal.x, (float) normal.y, (float) normal.z), progress);
+
+			if (progress >= 1.0f && DRIPPED.add(decal.born())) {
+				level.addParticle(Gore.BLOOD_DROP, center.x, center.y - decal.size(), center.z, 0.0, -0.08, 0.0);
+			}
+		} else {
+			StainQuad.submit(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),
+					decal.rot(), light, new Vector3f((float) normal.x, (float) normal.y, (float) normal.z));
+		}
+
 		poseStack.popPose();
 	}
 }

@@ -32,6 +32,9 @@ public final class Bleeding {
 	private static final int MAX_DECALS_PER_HIT = 12;
 	/** Half-angle of the impact cone, in the tangent the jitter is measured in. */
 	private static final float SPRAY_SPREAD = 0.6f;
+	/** A heavy hit leaves a run of blood that will later crawl down the wall. */
+	private static final float DRIP_SEVERITY = 0.55f;
+	private static final float DRIP_CHANCE = 0.5f;
 
 	private Bleeding() {
 	}
@@ -160,6 +163,16 @@ public final class Bleeding {
 
 				if (decal != null) {
 					placed.add(decal);
+
+					// A heavy wound leaves a run that will crawl down the wall.
+					if (severity >= DRIP_SEVERITY && random.nextFloat() < DRIP_CHANCE
+							&& placed.size() < MAX_DECALS_PER_HIT) {
+						Decal drip = dripDecal(hit, severity, level.getGameTime(), random);
+
+						if (drip != null) {
+							placed.add(drip);
+						}
+					}
 				}
 			}
 		}
@@ -219,7 +232,7 @@ public final class Bleeding {
 		float limit = Math.max(0.0f, 0.5f - size * 0.5f);
 		float u = (float) Mth.clamp(rel.dot(Decal.axis1(face)), -limit, limit);
 		float v = (float) Mth.clamp(rel.dot(Decal.axis2(face)), -limit, limit);
-		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(), u, v, size, rot, variant);
+		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(), u, v, size, rot, variant, 0L);
 	}
 
 	private static Decal poolDecal(BlockHitResult hit, float severity, RandomSource random) {
@@ -236,7 +249,48 @@ public final class Bleeding {
 		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(),
 				(float) Mth.clamp(rel.dot(Decal.axis1(face)), -poolLimit, poolLimit),
 				(float) Mth.clamp(rel.dot(Decal.axis2(face)), -poolLimit, poolLimit),
-				poolSize, random.nextFloat() * 360.0f, 12 + random.nextInt(2));
+				poolSize, random.nextFloat() * 360.0f, 12 + random.nextInt(2), 0L);
+	}
+
+	/**
+	 * A run of blood left on a wall by a heavy wound. It is born at {@code born}
+	 * game time and crawls downward as it ages, so {@code born} marks it as a drip
+	 * for the client to animate rather than a static splat.
+	 */
+	private static Decal dripDecal(BlockHitResult hit, float severity, long born, RandomSource random) {
+		BlockPos pos = hit.getBlockPos();
+		Direction face = hit.getDirection();
+
+		if (face == null) {
+			return null;
+		}
+
+		// Pools gather on the floor and do not run; only vertical faces drip.
+		if (face == Direction.UP || face == Direction.DOWN) {
+			return null;
+		}
+
+		Vec3 normal = new Vec3(face.getStepX(), face.getStepY(), face.getStepZ());
+		// World-down projected onto the face is straight down for every vertical
+		// face, independent of the face's tangent basis (which is inconsistent on
+		// the EAST face). The run's sprite-up points this way, the bulb hanging down.
+		Vec3 upOnFace = new Vec3(0.0, 1.0, 0.0).subtract(normal.scale(normal.y));
+
+		if (upOnFace.lengthSqr() < 1.0e-6) {
+			upOnFace = Decal.axis2(face);
+		} else {
+			upOnFace = upOnFace.normalize();
+		}
+
+		float rot = (float) Math.toDegrees(Math.atan2(upOnFace.dot(Decal.axis2(face)), upOnFace.dot(Decal.axis1(face))));
+
+		Vec3 rel = hit.getLocation().subtract(Vec3.atCenterOf(pos));
+		float size = Mth.clamp(0.35f + severity * 0.25f + random.nextFloat() * 0.15f, 0.3f, 0.7f);
+		float limit = Math.max(0.0f, 0.5f - size * 0.5f);
+		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(),
+				(float) Mth.clamp(rel.dot(Decal.axis1(face)), -limit, limit),
+				(float) Mth.clamp(rel.dot(Decal.axis2(face)), -limit, limit),
+				size, rot, 14 + random.nextInt(2), born);
 	}
 
 	private static Vec3 coneDirection(Vec3 dir, RandomSource random, float spread) {

@@ -66,8 +66,8 @@ public class GoreClientGameTest implements FabricClientGameTest {
 					"fill " + (fx - 4) + " " + fy + " " + (fz - 4) + " " + (fx + 4) + " " + (fy + 5) + " " + (fz - 4) + " stone");
 			singleplayer.getServer().runCommand(
 					"summon minecraft:cow " + (fx + 0.5) + " " + fy + " " + (fz - 2.5) + " "
-							+ "{NoAI:1b,PersistenceRequired:1b,Silent:1b,Invulnerable:0b,Health:60f,"
-							+ "attributes:[{id:\"minecraft:max_health\",base:60d}]}");
+							+ "{NoAI:1b,PersistenceRequired:1b,Silent:1b,Invulnerable:0b,Health:200f,"
+							+ "attributes:[{id:\"minecraft:max_health\",base:200d}]}");
 			context.waitTicks(10);
 
 			// Keep the player where they are; do not let them fall or drift.
@@ -87,16 +87,13 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			singleplayer.getServer().runCommand("item replace entity @p weapon.mainhand with minecraft:iron_sword");
 			context.waitTicks(5);
 
-			// Wound the cow as the player. Two 25-damage hits is severity ~0.42 each
-			// on a 60-health cow (past both the mist and splatter thresholds) and
-			// leaves it alive; the ~20-tick hurt immunity is why the loop waits
-			// longer than that between hits. Blood accumulates on the sword, so by
-			// the end the icon carries several splats.
-			for (int i = 0; i < 2; i++) {
-				singleplayer.getServer().runCommand(
-						"damage @e[type=minecraft:cow,limit=1] 25 minecraft:player_attack by @p");
-				context.waitTicks(25);
-			}
+			// Wound the cow as the player. A single 120-damage hit on a 200-health cow
+			// is severity 0.6 — past the mist (0.35), splatter (0.22) and drip (0.55)
+			// thresholds — and leaves it alive. The heavy hit also throws a run of
+			// blood down the wall, which the drip cells animate.
+			singleplayer.getServer().runCommand(
+					"damage @e[type=minecraft:cow,limit=1] 120 minecraft:player_attack by @p");
+			context.waitTicks(25);
 
 			// Shoot quickly: the blood mist only lives about a second.
 			context.waitTicks(5);

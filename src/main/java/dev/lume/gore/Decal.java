@@ -14,7 +14,7 @@ import net.minecraft.world.phys.Vec3;
  * tangent axes in block units (-0.5..0.5); {@code variant} picks a cell in the
  * decal texture atlas; {@code rot} is a random roll in degrees.
  */
-public record Decal(int x, int y, int z, int face, float u, float v, float size, float rot, int variant) {
+public record Decal(int x, int y, int z, int face, float u, float v, float size, float rot, int variant, long born) {
 	public static final Codec<Decal> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 			Codec.INT.fieldOf("x").forGetter(Decal::x),
 			Codec.INT.fieldOf("y").forGetter(Decal::y),
@@ -24,7 +24,8 @@ public record Decal(int x, int y, int z, int face, float u, float v, float size,
 			Codec.FLOAT.fieldOf("v").forGetter(Decal::v),
 			Codec.FLOAT.fieldOf("size").forGetter(Decal::size),
 			Codec.FLOAT.fieldOf("rot").forGetter(Decal::rot),
-			Codec.INT.fieldOf("variant").forGetter(Decal::variant)
+			Codec.INT.fieldOf("variant").forGetter(Decal::variant),
+			Codec.LONG.optionalFieldOf("born", 0L).forGetter(Decal::born)
 	).apply(instance, Decal::new));
 
 	private static final StreamCodec<ByteBuf, Integer> BYTE_AS_INT = ByteBufCodecs.BYTE.map(Byte::intValue, Integer::byteValue);
@@ -39,6 +40,7 @@ public record Decal(int x, int y, int z, int face, float u, float v, float size,
 			ByteBufCodecs.FLOAT, Decal::size,
 			ByteBufCodecs.ROTATION_BYTE, Decal::rot,
 			ByteBufCodecs.VAR_INT, Decal::variant,
+			ByteBufCodecs.VAR_LONG, Decal::born,
 			Decal::new);
 
 	/** First tangent axis of the face, so that {@code axis1 x axis2 == face normal}. */

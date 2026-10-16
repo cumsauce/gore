@@ -14,6 +14,7 @@ import net.minecraft.client.renderer.entity.layers.RenderLayer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 /**
@@ -50,11 +51,10 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 			return;
 		}
 
-		// setupRotations skips the yaw basis entirely while sleeping, so the
-		// world-to-model conversion below would be wrong; skip the few frames.
-		// A sleeping entity still wears its wounds. Only the *pose* is special
-		// (handled by setupRotations, which the caller has already applied), so
-		// sleeping is deliberately not skipped here.
+		// A sleeping entity still wears its wounds, so sleeping is deliberately not
+		// special-cased here. Only the entity's *pose* is unusual, and the caller
+		// has already applied that through setupRotations, which the world-to-model
+		// conversion below accounts for.
 
 		EntityModel<LivingEntityRenderState> model = getParentModel();
 
@@ -105,15 +105,43 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 			root.translateAndRotate(poseStack);
 		}
 
-		// Recomputed from the part's current (animated) pose each frame, so the
-		// quad rides the body's transform without depending on it being rigid.
-		float reach = StainAnchor.supportAlong(poseStack, part, outward);
+		// Enter the part's own frame, so the quad rides the part's animation: a
+		// wound on the head follows the head's yaw, one on an arm swings with the
+		// arm. The world-space `outward` then has to be carried into that frame
+		// as well, or the wound would face a direction the body no longer has.
+		part.translateAndRotate(poseStack);
+		float[] local = localise(poseStack, outward);
 
-		if (Float.isFinite(reach)) {
-			poseStack.translate(outward.x() * reach, outward.y() * reach, outward.z() * reach);
-			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, outward);
+		if (local != null) {
+			Vector3f localOutward = new Vector3f(local[0], local[1], local[2]);
+
+			// Recomputed from the part's current (animated) pose each frame, so the
+			// quad rides the body's transform without depending on it being rigid.
+			float reach = StainAnchor.supportAlong(poseStack, part, localOutward);
+
+			if (Float.isFinite(reach)) {
+				poseStack.translate(localOutward.x() * reach, localOutward.y() * reach, localOutward.z() * reach);
+				StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, localOutward);
+			}
 		}
 
 		poseStack.popPose();
+	}
+
+	/**
+	 * Carries a direction expressed in the space outside {@code poseStack} into
+	 * the space the pose stack currently defines, using the inverse of its
+	 * normal matrix. Returns null when the transform is degenerate.
+	 */
+	private static float[] localise(PoseStack poseStack, Vector3f outward) {
+		Matrix4f inverse = new Matrix4f(poseStack.last().pose()).invert();
+		Vector3f local = inverse.transformDirection(new Vector3f(outward));
+
+		if (local.lengthSquared() < 1.0E-8F) {
+			return null;
+		}
+
+		local.normalize();
+		return new float[]{local.x(), local.y(), local.z()};
 	}
 }

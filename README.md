@@ -2,7 +2,7 @@
 
 Blood that behaves like blood: creatures bleed when they are cut, hard impacts throw it, and it stays where it lands. A Fabric mod for Minecraft 26.3.
 
-Status: **0.2.0**, on the [releases page](https://github.com/cumsauce/gore/releases).
+Status: **0.3.0**, on the [releases page](https://github.com/cumsauce/gore/releases).
 
 ## The idea
 

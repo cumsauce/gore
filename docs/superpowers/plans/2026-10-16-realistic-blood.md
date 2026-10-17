@@ -196,6 +196,8 @@ git commit -m "Tune splat elongation and density"   # only if changed
 
 ### Phase 2 (planned after Phase 1 verifies) — drips and flow
 
+> Superseded by docs/superpowers/plans/2026-10-16-blood-flow-realism.md (Phases 2–3).
+
 A new decal kind with an age: heavy stains on vertical faces spawn a persistent thin "run" that grows downward and ends in a teardrop bulb, animated by the client from the decal's age; a bulb past a threshold detaches as a falling drop particle. Details to be written once Phase 1's atlas and placement are stable, because the run/bulb cells (14–15) and the "how heavy is a stain" rule depend on them.
 
 ### Phase 3 (later) — pools, cast-off, wicking

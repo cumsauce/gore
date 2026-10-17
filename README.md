@@ -17,7 +17,9 @@ It is all cosmetic. Bleeding never costs health or damages anything; the wound i
 - **Severity** comes from the damage actually taken, measured against the creature's maximum health, so a hit that nearly kills a chicken is not the same as one that barely dents a ravager.
 - **Direction** is the projectile's own velocity when there is a projectile, otherwise the line from attacker to victim, otherwise the damage source's position. A blow from below throws blood upward into the ceiling; a hit from the side paints the wall behind.
 - **Splatter** is a set of jittered rays cast from the wound in a cone along the blow, clipped against block collision shapes. Each ray that lands stores a decal: which block, which face, where on the face, how big, which way it is turned, and which cell of the decal texture atlas to use. The angle it struck at picks the stain's elongation — square on gives a round blot, glancing gives a long-tailed ellipse — and the blow's force picks the droplet size and how many satellites it casts, so a harder hit throws more, smaller drops.
-- **Drips run.** A heavy splat on a vertical face adds a drip that grows downwards over a few seconds, its bead sliding to the tip, and drops a droplet off the end when it finishes.
+- Spray is a directed cone with a log-normal droplet size distribution and air-drag ballistics; mist hangs and evaporates within a second.
+- Drips accelerate, thin, shed a falling droplet and merge with neighbours.
+- Blood dries from wet red to dark brown over five minutes (`-Dgore.dryScale` scales the clock).
 - **Bodies get bloody.** Anything that takes damage wears a stain at the wound, stuck to its own model, so it moves and animates with the creature. Hits accumulate up to a per-entity cap, oldest recycled. It applies to your own body, every mob, and other players.
 - **Decals persist.** They live in a per-level `SavedData` capped at 1024, oldest evicted first, written to `dimensions/<dim>/data/gore/decals.dat`. They survive restarts, and they are per-dimension.
 - **Everyone sees them.** The server is authoritative: new decals go to every player within 96 blocks as they are made, and a joining player — or one changing dimension — receives the full list for the level they are entering.
@@ -50,6 +52,8 @@ Building inside a VM from a folder shared with the host over VirtioFS needs `-Pg
 
 It builds a stone room, has the player cut a cow with a sword for a directed spray (which also bloodies the held sword and stains the cow's body), and writes screenshots to `~/gore-run/clientGameTest/screenshots/`. In CI it runs only on a manual dispatch with "Run the client game test" ticked, under Xvfb and Mesa's software Vulkan.
 
+`-Dgore.seed=<long>` is a test-only switch: it seeds the deterministic game-test harness so a run can be reproduced, and has no effect on normal play.
+
 ## Releasing
 
 Pushing a `v<version>` tag that matches `version` in `gradle.properties` makes CI build the jar and publish a GitHub release:
@@ -61,11 +65,12 @@ git tag v0.1.0 && git push origin main v0.1.0
 
 ## Known gaps
 
-- The decals are the whole of the persistence: there is no fading, no drying, no washing blood off a wall. They stay until the budget evicts them.
+- The decals are the whole of the persistence: there is no fading, no washing blood off a wall. They stay until the budget evicts them.
 - Blood is laid down once and does not respond to the world afterwards: rain does not disturb it, and a wounded creature does not leave a trail as it walks.
 - A body stain is placed from what caused the damage, not from a real hit point — Minecraft's damage event does not report one — so the wound is inferred onto the nearest sensible part of the model, and a creature whose model has no part for it simply shows nothing.
 - Body stains live in memory for the life of the server, so they do not survive a restart, unlike the wall decals.
 - Nothing washes blood off a body yet: water rinses the gear a player is carrying, and that is all.
+- Known gaps: no secondary runnel branching, no pool meniscus, no cast-off trails, no porous wicking (see plan 2026-10-16-blood-flow-realism, Deferred).
 
 ## License
 

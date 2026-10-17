@@ -1,6 +1,7 @@
 package dev.lume.gore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.lume.gore.BloodAppearance;
 import dev.lume.gore.GoreStain;
 import java.util.List;
 import java.util.Optional;
@@ -57,13 +58,13 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 
 		EntityModel<LivingEntityRenderState> model = getParentModel();
 
-		for (GoreStain stain : stains) {
-			submitStain(poseStack, collector, light, state, model, stain);
+		for (int i = 0; i < stains.size(); i++) {
+			submitStain(poseStack, collector, light, state, model, stains.get(i), i);
 		}
 	}
 
 	private static void submitStain(PoseStack poseStack, SubmitNodeCollector collector, int light,
-			LivingEntityRenderState state, EntityModel<LivingEntityRenderState> model, GoreStain stain) {
+			LivingEntityRenderState state, EntityModel<LivingEntityRenderState> model, GoreStain stain, int index) {
 		Vector3f travel = new Vector3f(stain.dirX(), stain.dirY(), stain.dirZ());
 
 		if (travel.lengthSquared() < 1.0E-8F) {
@@ -131,7 +132,14 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 
 		if (Float.isFinite(reach)) {
 			poseStack.translate(local.x() * reach, local.y() * reach, local.z() * reach);
-			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, local);
+			// GoreStain has no born stamp and the payload is frozen, so body
+			// stains cannot dry yet — they always render wet. The seed comes
+			// from the stain's own fields plus its index, so two identical
+			// rolls on one entity still read as two different stains.
+			long seed = BloodAppearance.seedFor(stain.sourceType(), stain.dirX(), stain.dirY(), stain.dirZ(),
+					stain.size(), stain.rot(), stain.variant(), index);
+			int color = BloodAppearance.tint(seed, 0.0f);
+			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, local, color);
 		}
 
 		poseStack.popPose();

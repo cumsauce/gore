@@ -79,7 +79,7 @@ public final class StainQuad {
 	 * was found.
 	 */
 	public static void submit(SubmitNodeCollector collector, PoseStack poseStack,
-			int variant, float size, float rot, int light, Vector3f outward) {
+			int variant, float size, float rot, int light, Vector3f outward, int color) {
 		init();
 
 		Quaternionf orientation = new Quaternionf().rotateTo(MODEL_FRONT, outward);
@@ -91,7 +91,7 @@ public final class StainQuad {
 		poseStack.rotateDegrees(Axis.ZP, rot);
 		poseStack.scale(scale, scale, scale);
 		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
-				light, OverlayTexture.NO_OVERLAY, null);
+				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 	}
 

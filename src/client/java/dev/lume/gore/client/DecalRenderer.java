@@ -3,6 +3,7 @@ package dev.lume.gore.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.lume.gore.Decal;
 import dev.lume.gore.DecalFrame;
+import dev.lume.gore.DecalMerge;
 import dev.lume.gore.Drying;
 import dev.lume.gore.Flow;
 import dev.lume.gore.Gore;
@@ -36,7 +37,7 @@ public final class DecalRenderer {
 
 	/** True for wall drips (atlas cell 14), which flow as they age. */
 	public static boolean isDrip(Decal d) {
-		return d.variant() == 14;
+		return DecalMerge.isDrip(d);
 	}
 
 	/** Forgets completed drips; called on disconnect. */

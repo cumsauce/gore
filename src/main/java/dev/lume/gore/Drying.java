@@ -16,16 +16,32 @@ public final class Drying {
 	/** Ticks a stain stays fully wet (~60 s at scale 1.0). */
 	public static final long WET_TICKS = 1200L;
 
-	/** Game time at which a stain is fully dry (5 min at scale 1.0). */
+	/**
+	 * Age threshold (ticks since the stain was placed) at which it is fully dry,
+	 * multiplied by {@link #SCALE} (5 min at scale 1.0).
+	 */
 	public static final long DRY_TICKS = 6000L;
 
 	/**
 	 * Test hook: multiplies both thresholds so the game test can watch a stain
 	 * dry in seconds. Set {@code -Dgore.dryScale=0.02} in the game-test JVM.
+	 * Null, blank or unparseable input degrades to {@code 1.0}.
 	 */
-	public static final double SCALE = Double.parseDouble(System.getProperty("gore.dryScale", "1.0"));
+	public static final double SCALE = scaleOr(System.getProperty("gore.dryScale"), 1.0);
 
 	private Drying() {
+	}
+
+	/** The parsed {@code raw}, or {@code fallback} when null, blank or unparseable. */
+	private static double scaleOr(String raw, double fallback) {
+		if (raw == null || raw.isBlank()) {
+			return fallback;
+		}
+		try {
+			return Double.parseDouble(raw.trim());
+		} catch (NumberFormatException e) {
+			return fallback;
+		}
 	}
 
 	/**

@@ -70,7 +70,8 @@ git tag v0.1.0 && git push origin main v0.1.0
 - A body stain is placed from what caused the damage, not from a real hit point — Minecraft's damage event does not report one — so the wound is inferred onto the nearest sensible part of the model, and a creature whose model has no part for it simply shows nothing.
 - Body stains live in memory for the life of the server, so they do not survive a restart, unlike the wall decals.
 - Nothing washes blood off a body yet: water rinses the gear a player is carrying, and that is all.
-- Known gaps: no secondary runnel branching, no pool meniscus, no cast-off trails, no porous wicking (see plan 2026-10-16-blood-flow-realism, Deferred).
+- No secondary runnel branching, no pool meniscus, no cast-off trails, no porous wicking (see plan 2026-10-16-blood-flow-realism, Deferred).
+- Drips saved by versions before 0.3 (atlas cell 15) now render as static bead stains rather than animated runs; new drips use cell 14 and animate.
 
 ## License
 

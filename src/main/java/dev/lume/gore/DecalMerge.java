@@ -23,7 +23,7 @@ public final class DecalMerge {
 	public static final float DRIP_MAX_SIZE = 0.9f;
 	public static final float STAIN_MAX_SIZE = 0.5f;
 
-	/** The drip variant, mirroring {@code DecalRenderer.isDrip}. */
+	/** The drip variant (atlas cell 14); the single source of drip-ness. */
 	private static final int DRIP_VARIANT = 14;
 	/** Impact stains are variants 0–11; 12–13 are pools. */
 	private static final int STAIN_VARIANTS = 12;
@@ -95,7 +95,12 @@ public final class DecalMerge {
 				Math.min(STAIN_MAX_SIZE, target.size() * 1.15f), target.rot(), variant, candidate.born());
 	}
 
-	private static boolean isDrip(Decal decal) {
+	/**
+	 * True for wall drips (atlas cell 14), decided by variant alone — never by
+	 * {@code born}. {@code DecalRenderer.isDrip} delegates here so the rule has
+	 * one definition in the main source set, where the unit tests can see it.
+	 */
+	public static boolean isDrip(Decal decal) {
 		return decal.variant() == DRIP_VARIANT;
 	}
 

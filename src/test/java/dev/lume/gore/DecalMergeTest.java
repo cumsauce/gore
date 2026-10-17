@@ -1,6 +1,7 @@
 package dev.lume.gore;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -55,5 +56,13 @@ class DecalMergeTest {
 	void differentFaces_doNotMerge() {
 		Decal s = new Decal(1, 2, 3, Direction.SOUTH.get3DDataValue(), 0, 0, 0.3f, 0, 0, 5L);
 		assertTrue(DecalMerge.findTarget(List.of(stain(0, 0, 0.3f, 0)), s).isEmpty());
+	}
+
+	@Test
+	void isDrip_dependsOnVariantNotBorn() {
+		assertTrue(DecalMerge.isDrip(new Decal(1, 2, 3, Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 90f, 14, 0L)));
+		assertTrue(DecalMerge.isDrip(new Decal(1, 2, 3, Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 90f, 14, 999L)));
+		assertFalse(DecalMerge.isDrip(new Decal(1, 2, 3, Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 15, 999L)));
+		assertFalse(DecalMerge.isDrip(new Decal(1, 2, 3, Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 0, 999L)));
 	}
 }

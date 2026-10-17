@@ -39,7 +39,9 @@ public final class StainQuad {
 	 * Passing 1 left the UVs in texel units, so the quad repeat-wrapped the whole atlas
 	 * into a uniform red wash instead of showing one cell.
 	 */
-	private static final float ATLAS_SIZE = 256.0f;
+	private static final float ATLAS_SIZE = 512.0f;
+	/** Cells per atlas row; the atlas is an 8x8 grid of {@link #CELL}-texel cells. */
+	private static final int GRID = 8;
 
 	private static final ModelPart[] VARIANTS = buildVariants();
 	private static final Vector3f MODEL_FRONT = new Vector3f(0.0f, 0.0f, -1.0f);
@@ -47,11 +49,11 @@ public final class StainQuad {
 	private static RenderType renderType;
 
 	private static ModelPart[] buildVariants() {
-		ModelPart[] parts = new ModelPart[16];
+		ModelPart[] parts = new ModelPart[GRID * GRID];
 
-		for (int cell = 0; cell < 16; cell++) {
-			int cellX = cell & 3;
-			int cellY = cell >> 2;
+		for (int cell = 0; cell < parts.length; cell++) {
+			int cellX = cell % GRID;
+			int cellY = cell / GRID;
 			ModelPart.Cube cube = new ModelPart.Cube(cellX * CELL - 1, cellY * CELL - 1,
 					-UNITS / 2.0f, -UNITS / 2.0f, 0.0f, UNITS, UNITS, 1.0f,
 					0.0f, 0.0f, 0.0f, false, ATLAS_SIZE, ATLAS_SIZE, Set.of(Direction.NORTH));
@@ -90,7 +92,7 @@ public final class StainQuad {
 		poseStack.rotate(orientation);
 		poseStack.rotateDegrees(Axis.ZP, rot);
 		poseStack.scale(scale, scale, scale);
-		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
+		collector.submitModelPart(VARIANTS[variant & (GRID * GRID - 1)], poseStack, renderType,
 				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 	}
@@ -115,7 +117,7 @@ public final class StainQuad {
 		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(scale, scale, scale);
-		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
+		collector.submitModelPart(VARIANTS[variant & (GRID * GRID - 1)], poseStack, renderType,
 				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 	}

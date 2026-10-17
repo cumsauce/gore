@@ -52,6 +52,19 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			// Particles are the whole point; the restored defaults could have them off.
 			context.runOnClient(mc -> mc.options.particles().set(ParticleStatus.ALL));
 
+			// The HUD (hotbar, crosshair, held item and the first-person hand) paints
+			// non-blood pixels into every world screenshot, which makes the pixel gates
+			// and human review noisier. There is no options.hideGui anymore — F1 goes
+			// through Hud.toggle(), and GuiRenderState.isHudHidden (written from
+			// Hud.isHidden) is what skips the hand too. Keep it on for the rest of the
+			// scenario; a Screen such as the inventory is extracted separately from the
+			// HUD, so 0003 still shows the blood on the item icon.
+			context.runOnClient(mc -> {
+				if (!mc.gui.hud.isHidden()) {
+					mc.gui.hud.toggle();
+				}
+			});
+
 			BlockPos feet = context.computeOnClient(mc -> mc.player.blockPosition());
 			int fx = feet.getX();
 			int fy = feet.getY();

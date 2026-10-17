@@ -512,8 +512,9 @@ Append after the Task 5 scenes: look at `(fx+0.5, fy+1.5, fz+4)`; `runOnClient`:
 - [ ] **Step 6: Run the game test and check the colour shift**
 
 Run (600000 ms): `env JAVA_HOME=/opt/homebrew/opt/openjdk@25 ./gradlew runClientGameTest`
-Bright probe: `python3 tools/pixelstat.py <png> 110 14 14 40`; dark probe: `python3 tools/pixelstat.py <png> 60 12 8 30`, each on `0012_gore-dry-wet.png` and `0013_gore-dry-dry.png`.
-Expected: `bright(wet) ≥ 2 × bright(dry)` and `dark(dry) ≥ 2 × dark(wet)`; both screenshots have `bright + dark ≥ 150` (the stain is visible in both). **Needs a human** to confirm the dry stain reads as old blood rather than mud; shell checks only the direction of the shift.
+Bright probe: `python3 tools/pixelstat.py <png> 110 14 14 40`; dark probe: `python3 tools/pixelstat.py <png> 63 12 8 20`, each on `0012_gore-dry-wet.png` and `0013_gore-dry-dry.png`.
+Expected: `bright(wet) ≥ 2 × bright(dry)` and `dark(dry) ≥ 2 × dark(wet)`; `bright(wet) ≥ 150` and `dark(dry) ≥ 150` (the stain is visible wet and dry). Reference run: bright 944 → 0; dark 57 → 944 (ratio 16.6×). **Needs a human** to confirm the dry stain reads as old blood rather than mud; shell checks only the direction of the shift.
+**Ruling (the dark probe is `63 12 8 20`, not the earlier `60 12 8 30`):** the dried-blood tint is the texture `(120,14,14)` multiplied by `tint(1)` = `(133,217,153)/255`, i.e. `(62.6, 11.9, 8.4)`. A wide probe at `(60,12,8)` tol 30 also matches the stone room's ambient shadows right across the frame (~1900 px in *both* frames), so `dark(dry) ≥ 2 × dark(wet)` read as a false 1976 vs 3714 failure. The site-specific `(63,12,8)` tol 20 probe returns 57 (wet) vs 944 (dry): the wet stain is bright red and does not match, the dry stain does. Cost if wrong: a looser colour match; the bright probe's 944 → 0 already pins the wet→dry transition.
 
 - [ ] **Step 7: Build and commit**
 

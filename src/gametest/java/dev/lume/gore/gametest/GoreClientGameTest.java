@@ -227,6 +227,32 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.takeScreenshot("gore-spray");
 			context.waitTicks(40);
 			context.takeScreenshot("gore-spray-settled");
+
+			// Task 5: drip flow. The clean wall at fz+4, aimed at its top area
+			// (fy+2, above any later stains); the drip decal is born now, so the
+			// run must grow downward from a fixed anchor: at tick 5 it is a stub,
+			// at 30 a short run, at 120 full length. tools/pixelstat.py over the
+			// three screenshots checks bbox.y0 stays put while y1 descends.
+			Vec3 dripWallPoint = new Vec3(fx + 0.5, fy + 2.5, fz + 4);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, dripWallPoint));
+			context.waitTicks(5);
+
+			context.runOnClient(mc -> {
+				DecalManager.clear();
+				DecalRenderer.clearDrips();
+				long born = mc.level.getGameTime();
+				DecalManager.addDecals(List.of(new Decal(fx, fy + 2, fz + 4,
+						Direction.NORTH.get3DDataValue(), 0f, 0.3f, 0.6f, 90f, 14, born)));
+			});
+			context.waitTicks(5);
+			context.takeScreenshot("gore-drip-05");
+			context.waitTicks(25);
+			context.takeScreenshot("gore-drip-30");
+			context.waitTicks(90);
+			context.takeScreenshot("gore-drip-120");
+
+			// Leave the decals empty for any later scenes.
+			context.runOnClient(mc -> DecalManager.clear());
 		}
 	}
 }

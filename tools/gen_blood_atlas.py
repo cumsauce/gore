@@ -10,7 +10,8 @@ Layout (cell i at x=(i%4)*64, y=(i//4)*64), splat tail points UP (-y):
               elongation bands 0-3 -> b/a = [1.0, 0.7, 0.45, 0.25]
               density bands 0-2    -> satellite counts [0, 4, 9]
   cells 12-13 pool blobs (two sizes, no tail)
-  cells 14-15 drip runs (two lengths; reserved for Phase 2)
+  cell 14        drip run strip (full cell height, 6px wide, dark edges)
+  cell 15        drip leading bead (single ellipse)
 
 Colours: base (120,14,14,255); spine/satellites (90,8,8,255);
 1px lighter leading edge (150,24,20,255).
@@ -154,16 +155,18 @@ def draw_pool(buf, cell_x, cell_y, radius):
     fill_blob(buf, cell_x + 31.5, cell_y + 31.5, radius, BASE, clip)
 
 
-def draw_drip(buf, cell_x, cell_y, top):
-    """Drip run: 6px-wide vertical strip ending in a ~16px bulb.
-
-    `top` is the run's start y in cell-local pixels.
-    """
+def draw_run(buf, cell_x, cell_y):
+    """Drip run strip: full cell height, 6px wide, BASE with 1px DARK edges."""
     clip = (cell_x, cell_y, cell_x + CELL - 1, cell_y + CELL - 1)
-    bulb_cx = cell_x + 31.5
-    bulb_cy = cell_y + 52
-    fill_rect(buf, cell_x + 29, cell_x + 34, cell_y + top, int(bulb_cy), BASE, clip)
-    fill_ellipse(buf, bulb_cx, bulb_cy, 9.0, 8.0, clip, BASE)
+    fill_rect(buf, cell_x + 29, cell_x + 34, cell_y, cell_y + CELL - 1, BASE, clip)
+    fill_rect(buf, cell_x + 29, cell_x + 29, cell_y, cell_y + CELL - 1, DARK, clip)
+    fill_rect(buf, cell_x + 34, cell_x + 34, cell_y, cell_y + CELL - 1, DARK, clip)
+
+
+def draw_bead(buf, cell_x, cell_y):
+    """Drip leading bead: a 9x8 ellipse centred in the cell, lit lower edge."""
+    clip = (cell_x, cell_y, cell_x + CELL - 1, cell_y + CELL - 1)
+    fill_ellipse(buf, cell_x + 31.5, cell_y + 31.5, 9.0, 8.0, clip, BASE, EDGE)
 
 
 def write_png(path, width, height, buf):
@@ -206,9 +209,9 @@ def main():
     draw_pool(buf, (12 % GRID) * CELL, (12 // GRID) * CELL, 26.0)
     draw_pool(buf, (13 % GRID) * CELL, (13 // GRID) * CELL, 17.0)
 
-    # drips: two run lengths, bulb at the bottom (reserved for Phase 2)
-    draw_drip(buf, (14 % GRID) * CELL, (14 // GRID) * CELL, top=4)
-    draw_drip(buf, (15 % GRID) * CELL, (15 // GRID) * CELL, top=22)
+    # drip: full-height run strip (14) and its leading bead (15)
+    draw_run(buf, (14 % GRID) * CELL, (14 // GRID) * CELL)
+    draw_bead(buf, (15 % GRID) * CELL, (15 // GRID) * CELL)
 
     write_png(OUT_PATH, SIZE, SIZE, buf)
     opaque = sum(1 for i in range(3, len(buf), 4) if buf[i])

@@ -3,6 +3,7 @@ package dev.lume.gore.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.lume.gore.DecalFrame;
+import dev.lume.gore.Flow;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -120,29 +121,46 @@ public final class StainQuad {
 	}
 
 	/**
-	 * Like {@link #submit} but a drip: the run's top edge stays anchored at the
-	 * pose origin while the run grows downward as {@code progress} goes 0..1, the
-	 * bulb at its tip. At progress 0 nothing is drawn; at 1 the run is {@code size}
-	 * long.
+	 * Like {@link #submitOnFace} but a drip, driven by the flow fraction
+	 * {@code f = Flow.length(age)}: the run (atlas cell 14) hangs from the pose
+	 * origin and grows, thins and slows as {@code f} goes 0..1, and the leading
+	 * bead (cell 15) hangs at the run's bottom end, shrinking as volume leaves
+	 * it for the film behind. With {@code rot} pointing the tail up, model +Y is
+	 * world down, so the run's top edge stays pinned at the anchor and it
+	 * lengthens downward; at {@code f} its length is {@code size·f}. Both parts
+	 * take the {@code color} tint ({@code 0xFFFFFFFF} = untinted).
 	 */
 	public static void submitDrip(SubmitNodeCollector collector, PoseStack poseStack,
-			int variant, float size, float rot, int light, Vector3f outward, float progress) {
+			float size, float rot, int light, Direction face, float f, int color) {
 		init();
 
-		Quaternionf orientation = new Quaternionf().rotateTo(MODEL_FRONT, outward);
-		float scale = size / BLOCKS;
+		Quaternionf orientation = DecalFrame.orientation(face, rot);
+		float s = size / BLOCKS;
 
+		// The run: a full-cell strip scaled to f of the length, thinned to widthScale.
+		// The cube spans model y in [-2, 2]; translate(0, 2f, 0) pins its top edge at
+		// the origin and scale(..., f, 1) grows it downward to y = 4f.
 		poseStack.pushPose();
-		poseStack.translate(outward.x() * OFFSET, outward.y() * OFFSET, outward.z() * OFFSET);
+		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
 		poseStack.rotate(orientation);
-		poseStack.rotateDegrees(Axis.ZP, rot);
-		// In cube-block units the quad spans Y in [-2, 2]. Drop it so its top edge
-		// (+2) sits on the origin, then grow downward about that edge.
-		poseStack.translate(0.0, -BLOCKS / 2.0, 0.0);
-		poseStack.scale(1.0f, progress, 1.0f);
-		poseStack.scale(scale, scale, scale);
-		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
-				light, OverlayTexture.NO_OVERLAY, null);
+		poseStack.scale(s, s, s);
+		poseStack.translate(0.0, 2.0f * f, 0.0);
+		poseStack.scale(Flow.widthScale(f), f, 1.0f);
+		collector.submitModelPart(VARIANTS[14], poseStack, renderType,
+				light, OverlayTexture.NO_OVERLAY, null, color);
+		poseStack.popPose();
+
+		// The bead: hangs at the run's bottom end — the 2·beadScale term puts its
+		// top edge at the run's bottom (4f), so it never bulges above the wound.
+		float bead = Flow.beadScale(f);
+		poseStack.pushPose();
+		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
+		poseStack.rotate(orientation);
+		poseStack.scale(s, s, s);
+		poseStack.translate(0.0, 4.0f * f + 2.0f * bead, 0.0);
+		poseStack.scale(bead, bead, bead);
+		collector.submitModelPart(VARIANTS[15], poseStack, renderType,
+				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 	}
 }

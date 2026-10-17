@@ -277,7 +277,7 @@ public final class Bleeding {
 	 * game time and crawls downward as it ages, so {@code born} marks it as a drip
 	 * for the client to animate rather than a static splat.
 	 */
-	private static Decal dripDecal(BlockHitResult hit, float severity, long born, RandomSource random) {
+	static Decal dripDecal(BlockHitResult hit, float severity, long born, RandomSource random) {
 		BlockPos pos = hit.getBlockPos();
 		Direction face = hit.getDirection();
 
@@ -310,7 +310,7 @@ public final class Bleeding {
 		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(),
 				(float) Mth.clamp(rel.dot(Decal.axis1(face)), -limit, limit),
 				(float) Mth.clamp(rel.dot(Decal.axis2(face)), -limit, limit),
-				size, rot, 14 + random.nextInt(2), born);
+				size, rot, 14, born);
 	}
 
 	private static void markGear(LivingEntity victim, DamageSource source, float severity, RandomSource random) {

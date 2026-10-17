@@ -2,6 +2,8 @@ package dev.lume.gore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.lume.gore.Decal;
+import dev.lume.gore.DecalFrame;
+import dev.lume.gore.Flow;
 import dev.lume.gore.Gore;
 import java.util.HashSet;
 import java.util.List;
@@ -12,10 +14,8 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.LightCoordsUtil;
-import net.minecraft.util.Mth;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Vector3f;
 
 /**
  * Renders blood decals as flat, textured model slabs on block faces.
@@ -27,12 +27,15 @@ import org.joml.Vector3f;
  * goes through the model feature instead, which is the same path entities use.
  */
 public final class DecalRenderer {
-	/** Ticks a drip takes to run its full length (4 seconds). */
-	private static final int DRIP_TICKS = 80;
-	/** Birth times of drips whose falling drop has already been spawned. */
-	private static final Set<Long> DRIPPED = new HashSet<>();
+	/** Drips whose falling drop has already been shed; one break-off per drip. */
+	private static final Set<Decal> DRIPPED = new HashSet<>();
 
 	private DecalRenderer() {
+	}
+
+	/** True for wall drips (atlas cell 14), which flow as they age. */
+	public static boolean isDrip(Decal d) {
+		return d.variant() == 14;
 	}
 
 	/** Forgets completed drips; called on disconnect. */
@@ -86,14 +89,17 @@ public final class DecalRenderer {
 		poseStack.pushPose();
 		poseStack.translate(center.x, center.y, center.z);
 
-		if (decal.born() > 0L && level != null) {
-			// A drip: animate the run downward, and drop a droplet when it bottoms out.
-			float progress = Mth.clamp((level.getGameTime() - decal.born()) / (float) DRIP_TICKS, 0.0f, 1.0f);
-			StainQuad.submitDrip(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),
-					decal.rot(), light, new Vector3f((float) normal.x, (float) normal.y, (float) normal.z), progress);
+		if (isDrip(decal) && level != null) {
+			// A drip: the run grows, thins and slows with age, the bead shrinks as
+			// it sheds volume, and past BREAK_OFF it pinches off a falling droplet.
+			long age = level.getGameTime() - decal.born();
+			float f = Flow.length(age);
+			StainQuad.submitDrip(context.submitNodeCollector(), poseStack, decal.size(),
+					decal.rot(), light, face, f, 0xFFFFFFFF);
 
-			if (progress >= 1.0f && DRIPPED.add(decal.born())) {
-				level.addParticle(Gore.BLOOD_DROP, center.x, center.y - decal.size(), center.z, 0.0, -0.08, 0.0);
+			if (f >= Flow.BREAK_OFF && DRIPPED.add(decal)) {
+				Vec3 bead = center.subtract(DecalFrame.tail(face, decal.rot()).scale(f * decal.size()));
+				level.addParticle(Gore.BLOOD_DROP, bead.x, bead.y, bead.z, 0.0, -0.02, 0.0);
 			}
 		} else {
 			StainQuad.submitOnFace(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),

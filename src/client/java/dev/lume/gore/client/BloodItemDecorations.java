@@ -26,7 +26,7 @@ public final class BloodItemDecorations {
 		int splats = 1 + Math.min(3, blood / 30);
 
 		for (int i = 0; i < splats; i++) {
-			int cell = rng.nextInt(16);
+			int cell = rng.nextInt(12);
 			int cellX = cell % 4;
 			int cellY = cell / 4;
 			int size = 6 + rng.nextInt(7);

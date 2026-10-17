@@ -3,6 +3,7 @@ package dev.lume.gore.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.lume.gore.Decal;
 import dev.lume.gore.DecalFrame;
+import dev.lume.gore.Drying;
 import dev.lume.gore.Flow;
 import dev.lume.gore.Gore;
 import java.util.HashSet;
@@ -86,6 +87,9 @@ public final class DecalRenderer {
 			light = LightCoordsUtil.FULL_BRIGHT;
 		}
 
+		long now = level != null ? level.getGameTime() : 0L;
+		int color = Drying.tint(Drying.dryness(decal.born(), now, Drying.SCALE));
+
 		poseStack.pushPose();
 		poseStack.translate(center.x, center.y, center.z);
 
@@ -95,7 +99,7 @@ public final class DecalRenderer {
 			long age = level.getGameTime() - decal.born();
 			float f = Flow.length(age);
 			StainQuad.submitDrip(context.submitNodeCollector(), poseStack, decal.size(),
-					decal.rot(), light, face, f, 0xFFFFFFFF);
+					decal.rot(), light, face, f, color);
 
 			if (f >= Flow.BREAK_OFF && DRIPPED.add(decal)) {
 				Vec3 bead = center.subtract(DecalFrame.tail(face, decal.rot()).scale(f * decal.size()));
@@ -103,7 +107,7 @@ public final class DecalRenderer {
 			}
 		} else {
 			StainQuad.submitOnFace(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),
-					decal.rot(), light, face, 0xFFFFFFFF);
+					decal.rot(), light, face, color);
 		}
 
 		poseStack.popPose();

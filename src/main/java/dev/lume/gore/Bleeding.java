@@ -179,7 +179,7 @@ public final class Bleeding {
 					continue;
 				}
 
-				Decal decal = decalAt(hit, rayDir, severity, random);
+				Decal decal = decalAt(hit, rayDir, severity, level.getGameTime(), random);
 
 				if (decal != null) {
 					placed.add(decal);
@@ -203,7 +203,7 @@ public final class Bleeding {
 			BlockHitResult hit = level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, victim));
 
 			if (hit.getType() == HitResult.Type.BLOCK && hit.getDirection() == Direction.UP) {
-				Decal pool = poolDecal(hit, severity, random);
+				Decal pool = poolDecal(hit, severity, level.getGameTime(), random);
 
 				if (pool != null) {
 					placed.add(pool);
@@ -214,7 +214,7 @@ public final class Bleeding {
 		return placed;
 	}
 
-	private static Decal decalAt(BlockHitResult hit, Vec3 travelDir, float severity, RandomSource random) {
+	private static Decal decalAt(BlockHitResult hit, Vec3 travelDir, float severity, long born, RandomSource random) {
 		BlockPos pos = hit.getBlockPos();
 		Direction face = hit.getDirection();
 
@@ -252,10 +252,10 @@ public final class Bleeding {
 		float limit = Math.max(0.0f, 0.5f - size * 0.5f);
 		float u = (float) Mth.clamp(rel.dot(Decal.axis1(face)), -limit, limit);
 		float v = (float) Mth.clamp(rel.dot(Decal.axis2(face)), -limit, limit);
-		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(), u, v, size, rot, variant, 0L);
+		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(), u, v, size, rot, variant, born);
 	}
 
-	private static Decal poolDecal(BlockHitResult hit, float severity, RandomSource random) {
+	private static Decal poolDecal(BlockHitResult hit, float severity, long born, RandomSource random) {
 		BlockPos pos = hit.getBlockPos();
 		Direction face = hit.getDirection();
 
@@ -269,7 +269,7 @@ public final class Bleeding {
 		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(),
 				(float) Mth.clamp(rel.dot(Decal.axis1(face)), -poolLimit, poolLimit),
 				(float) Mth.clamp(rel.dot(Decal.axis2(face)), -poolLimit, poolLimit),
-				poolSize, random.nextFloat() * 360.0f, 12 + random.nextInt(2), 0L);
+				poolSize, random.nextFloat() * 360.0f, 12 + random.nextInt(2), born);
 	}
 
 	/**

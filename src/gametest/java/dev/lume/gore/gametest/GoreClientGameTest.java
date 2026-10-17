@@ -251,6 +251,25 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.waitTicks(90);
 			context.takeScreenshot("gore-drip-120");
 
+			// Task 6: drying. A round clean stain below the drip, born now. With
+			// gore.dryScale=0.02 the clock is wet until tick 24 and fully dry at
+			// tick 120, so the wet shot at age 5 and the dry shot at age 135 must
+			// show the tint shift from white (wet red) to (133, 217, 153) (brown).
+			Vec3 dryWallPoint = new Vec3(fx + 0.5, fy + 1.5, fz + 4);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, dryWallPoint));
+			context.waitTicks(5);
+
+			context.runOnClient(mc -> {
+				DecalManager.clear();
+				DecalRenderer.clearDrips();
+				DecalManager.addDecals(List.of(new Decal(fx, fy + 1, fz + 4,
+						Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 0, mc.level.getGameTime())));
+			});
+			context.waitTicks(5);
+			context.takeScreenshot("gore-dry-wet");
+			context.waitTicks(130);
+			context.takeScreenshot("gore-dry-dry");
+
 			// Leave the decals empty for any later scenes.
 			context.runOnClient(mc -> DecalManager.clear());
 		}

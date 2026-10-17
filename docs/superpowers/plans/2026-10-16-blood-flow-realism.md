@@ -623,7 +623,32 @@ At the top of the Phase 2/3 section of `docs/superpowers/plans/2026-10-16-realis
 Run: `env JAVA_HOME=/opt/homebrew/opt/openjdk@25 ./gradlew clean build test` → `BUILD SUCCESSFUL`.
 Run (600000 ms): `env JAVA_HOME=/opt/homebrew/opt/openjdk@25 ./gradlew runClientGameTest` → `BUILD SUCCESSFUL`.
 Run: `ls ~/gore-run/clientGameTest/screenshots/`
-Expected: 14 files `0000_gore-bleeding.png` … `0013_gore-dry-dry.png` in the order: bleeding, body, body-turned, gear, splatters, tail-up, tail-down, spray, spray-settled, drip-05, drip-30, drip-120, dry-wet, dry-dry. Re-run every pixel assertion from Tasks 2, 4, 5 and 6 and record the numbers in the commit body.
+Expected: 14 files `0000_gore-bleeding.png` … `0013_gore-dry-dry.png` in the order: bleeding, body, body-turned, gear, splatters, tail-up, tail-down, spray, spray-settled, drip-05, drip-30, drip-120, dry-wet, dry-dry.
+
+Then re-run every gate with the exact commands below (all paths under `~/gore-run/clientGameTest/screenshots/`). Record every number in the commit body. Reference numbers are from the post-HUD, post-drying run; accept ±10 % on counts and ±2 px on bboxes.
+
+```
+# body stains survived the UV fix (reference 120; require >= 50)
+python3 tools/pixelstat.py --blood 0001_gore-body.png
+# splatter not blanked (reference 1064; require >= 100)
+python3 tools/pixelstat.py --blood 0004_gore-splatters.png
+# tail direction (both counts 214; taller than wide; centroid y up-down >= 4)
+python3 tools/pixelstat.py --blood 0005_gore-tail-up.png
+python3 tools/pixelstat.py --blood 0006_gore-tail-down.png
+# spray cloud exists and dissipates (14629 - 194 = 14435; require >= 2000)
+python3 tools/pixelstat.py --blood 0007_gore-spray.png
+python3 tools/pixelstat.py --blood 0008_gore-spray-settled.png
+# drip grows downward, top anchored (y0 = 213 all; y1 249 < 271 < 292; counts 186/244/198 >= 100)
+python3 tools/pixelstat.py --blood 0009_gore-drip-05.png
+python3 tools/pixelstat.py --blood 0010_gore-drip-30.png
+python3 tools/pixelstat.py --blood 0011_gore-drip-120.png
+# drying (bright 994 -> 0, dark 75 -> 994; require the 2x ratios and both >= 150)
+python3 tools/pixelstat.py 0012_gore-dry-wet.png 110 14 14 40
+python3 tools/pixelstat.py 0013_gore-dry-dry.png 110 14 14 40
+python3 tools/pixelstat.py 0012_gore-dry-wet.png 63 12 8 20
+python3 tools/pixelstat.py 0013_gore-dry-dry.png 63 12 8 20
+```
+(Note: `pixelstat.py` resolves relative paths against the current directory; run these from the screenshots directory or prefix each with `~/gore-run/clientGameTest/screenshots/`.)
 
 - [ ] **Step 4: needs a human** — view `0001_gore-body.png` (the body-stain system must still read as blood after the Task 2 UV-divisor fix changed all stain rendering from a whole-atlas wash to single atlas cells — this is the only check that body stains survived), `0007_gore-spray.png` (jet should read as a cone with a few large drops leading and fine mist near the wound), `0011_gore-drip-120.png` (thin run with a small bead at the bottom, not a smear) and `0013_gore-dry-dry.png` (dried blood, matte dark red-brown).
 

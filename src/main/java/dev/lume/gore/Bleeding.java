@@ -91,11 +91,15 @@ public final class Bleeding {
 
 		if (!placed.isEmpty()) {
 			DecalStore store = level.getDataStorage().computeIfAbsent(DecalStore.TYPE);
+			// Neighbouring marks coalesce in the store; send what was actually
+			// stored (the merged decal), not the raw placed list, so clients
+			// mirror the same merge and the count never grows for one.
+			List<Decal> stored = new ArrayList<>(placed.size());
 			for (Decal decal : placed) {
-				store.add(decal);
+				stored.add(store.addOrMerge(decal));
 			}
 
-			GorePayloads.DecalsPayload payload = new GorePayloads.DecalsPayload(List.copyOf(placed));
+			GorePayloads.DecalsPayload payload = new GorePayloads.DecalsPayload(List.copyOf(stored));
 			for (ServerPlayer player : PlayerLookup.around(level, wound, 96.0)) {
 				ServerPlayNetworking.send(player, payload);
 			}

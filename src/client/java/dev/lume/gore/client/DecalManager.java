@@ -1,6 +1,7 @@
 package dev.lume.gore.client;
 
 import dev.lume.gore.Decal;
+import dev.lume.gore.DecalMerge;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -17,9 +18,13 @@ public final class DecalManager {
 	private DecalManager() {
 	}
 
-	/** Adds incrementally placed decals, evicting the oldest past the budget. */
+	/** Adds incrementally placed decals, coalescing into a neighbour when the merged decal from the server arrives. */
 	public static void addDecals(List<Decal> decals) {
 		for (Decal decal : decals) {
+			// The merged decal shares its predecessor's x,y,z,face,u,v, so it
+			// matches itself here: remove the target it replaced before adding.
+			DecalMerge.findTarget(DECALS, decal).ifPresent(DECALS::remove);
+
 			while (DECALS.size() >= MAX_DECALS) {
 				DECALS.pollFirst();
 			}

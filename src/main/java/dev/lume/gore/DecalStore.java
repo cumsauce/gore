@@ -37,6 +37,26 @@ public class DecalStore extends SavedData {
 		setDirty();
 	}
 
+	/**
+	 * Adds a decal, coalescing it into an existing neighbour (see
+	 * {@link DecalMerge}) when one is on the same face and close enough: the
+	 * target is replaced by the single merged decal, so a merge never grows the
+	 * list. Returns the decal that was actually stored.
+	 *
+	 * <p>{@link #add} owns eviction for plain additions, but {@link Bleeding}
+	 * now places exclusively through this method, so the same oldest-first
+	 * budget guard has to run here too or the store could exceed
+	 * {@link #MAX_DECALS} without bound.
+	 */
+	public Decal addOrMerge(Decal candidate) {
+		Decal result = DecalMerge.applyTo(decals, candidate);
+		while (decals.size() > MAX_DECALS) {
+			decals.remove(0);
+		}
+		setDirty();
+		return result;
+	}
+
 	public List<Decal> getAll() {
 		return List.copyOf(decals);
 	}

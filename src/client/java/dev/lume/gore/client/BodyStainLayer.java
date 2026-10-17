@@ -2,6 +2,7 @@ package dev.lume.gore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.lume.gore.BloodAppearance;
+import dev.lume.gore.CubeProjection;
 import dev.lume.gore.GoreStain;
 import java.util.List;
 import java.util.Optional;
@@ -125,13 +126,19 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 
 		part.translateAndRotate(poseStack);
 
-		// The part's surface along the wound direction, in the part's own frame.
-		// `ownExtentAlong` reads the part's cubes directly without pushing anything,
-		// so measurement and placement share this one frame.
-		float reach = StainAnchor.ownExtentAlong(poseStack, part, local);
+		// The face of the part the wound landed on. This is the cube surface
+		// itself, not the part's far extent along the wound direction, so the
+		// stain sits flat on the body instead of on a bounding volume around it.
+		// `projectOnto` measures in the part's own frame without pushing anything,
+		// so the point it returns is in exactly the frame the next translate uses.
+		Optional<CubeProjection.Result> face = StainAnchor.projectOnto(part, local);
 
-		if (Float.isFinite(reach)) {
-			poseStack.translate(local.x() * reach, local.y() * reach, local.z() * reach);
+		if (face.isPresent()) {
+			float[] point = face.get().point();
+			float[] normal = face.get().normal();
+
+			poseStack.translate(point[0], point[1], point[2]);
+
 			// GoreStain has no born stamp and the payload is frozen, so body
 			// stains cannot dry yet — they always render wet. The seed comes
 			// from the stain's own fields plus its index, so two identical
@@ -139,7 +146,8 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 			long seed = BloodAppearance.seedFor(stain.sourceType(), stain.dirX(), stain.dirY(), stain.dirZ(),
 					stain.size(), stain.rot(), stain.variant(), index);
 			int color = BloodAppearance.tint(seed, 0.0f);
-			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, local, color);
+			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light,
+					new Vector3f(normal[0], normal[1], normal[2]), color);
 		}
 
 		poseStack.popPose();

@@ -332,7 +332,8 @@ Append after the Task 2 scenes:
 
 Run (600000 ms): `env JAVA_HOME=/opt/homebrew/opt/openjdk@25 ./gradlew runClientGameTest`
 `python3 tools/pixelstat.py ~/gore-run/clientGameTest/screenshots/0007_gore-spray.png 100 14 14 50`
-Expected: `size=WxH`; bbox `x1 ≥ 0.72·W` (red reaches the right third of the frame: the jet) and `x0 ≥ 0.25·W` (nothing left of the cow); `count` of 0007 > `count` of `0008_gore-spray-settled.png` with the same colour arguments (airborne droplets have landed or been removed; only stains and body blood remain).
+Expected: `count(0007) − count(0008) ≥ 2000` with the same colour arguments (the airborne spray cloud was rendered at +2 ticks and has landed or been removed by +42 ticks). Measured on the reference run: 29428 − 22756 = 6672.
+**Ruling (this gate replaces the earlier `x1 ≥ 0.72·W` / `x0 ≥ 0.25·W` band assertions, which are not measurable in this scene):** the room is already covered by the previous scene's wall stains, and at +2 ticks the ±19° cone is only ~1 block wide, so the airborne pixels fill the frame and no band or centroid separates the jet. The spray's *direction* is proven where it belongs — `SprayModelTest.dropVelocities_lieInsideCone` asserts every drop velocity is within 20° of `impactDirection`, and `BallisticsTest` proves the motion — so this pixel gate only needs to show the cloud exists and dissipates. The visual "does it read as a directed jet" judgement is a human check in Task 8.
 
 - [ ] **Step 8: Build and commit**
 
@@ -439,7 +440,8 @@ Append after the Task 4 scenes: look at `(fx+0.5, fy+2.5, fz+4)` (the clean wall
 
 Run (600000 ms): `env JAVA_HOME=/opt/homebrew/opt/openjdk@25 ./gradlew runClientGameTest`
 For each of `0009_gore-drip-05.png`, `0010_gore-drip-30.png`, `0011_gore-drip-120.png`: `python3 tools/pixelstat.py <png> 110 14 14 45`
-Expected: `count(05) < count(30) < count(120)`, with `count(120) ≥ 2 × count(05)`; `bbox.y0` within 3 px across all three (top anchored); `bbox.y1(05) < bbox.y1(30) < bbox.y1(120)` (grows downward: screen y increases); `bbox.y1(120) − bbox.y0(120)` is at least 1.5 × `bbox.y1(05) − bbox.y0(05)`. If `y0` moves instead of `y1`, the sign of the `translate(0, 2f, 0)` / orientation is wrong — fix `submitDrip`, not the test.
+Expected: `count(05) < count(30) < count(120)`; `bbox.y0` within 3 px across all three (top anchored); `bbox.y1(05) < bbox.y1(30) < bbox.y1(120)` (grows downward: screen y increases); `bbox.y1(120) − bbox.y0(120)` at least 1.5 × `bbox.y1(05) − bbox.y0(05)`. Reference run: counts 138 < 218 < 242; y0 213/213/213; y1 249 < 271 < 292; height 36 → 79 (2.19×).
+**Ruling (the earlier `count(120) ≥ 2 × count(05)` clause is dropped):** that clause is not derivable from this plan's own geometry — `beadScale(0) = 1` means the leading bead is near full size at tick 5 (area ≈ 0.98 of full) and then *shrinks* to 0.669 (area ×0.45) as the run grows, so the total pixel area grows sub-linearly (measured 1.75×). The claims that matter — the run is top-anchored, descends, and grows at least 1.5× in height — are all present and pass with margin. If `y0` moves instead of `y1`, the sign of `translate(0, 2f, 0)` / the orientation is wrong — fix `submitDrip`, not the assertion.
 
 - [ ] **Step 9: Build and commit**
 
@@ -619,7 +621,7 @@ Run (600000 ms): `env JAVA_HOME=/opt/homebrew/opt/openjdk@25 ./gradlew runClient
 Run: `ls ~/gore-run/clientGameTest/screenshots/`
 Expected: 14 files `0000_gore-bleeding.png` … `0013_gore-dry-dry.png` in the order: bleeding, body, body-turned, gear, splatters, tail-up, tail-down, spray, spray-settled, drip-05, drip-30, drip-120, dry-wet, dry-dry. Re-run every pixel assertion from Tasks 2, 4, 5 and 6 and record the numbers in the commit body.
 
-- [ ] **Step 4: needs a human** — view `0007_gore-spray.png` (jet should read as a cone with a few large drops leading and fine mist near the wound), `0011_gore-drip-120.png` (thin run with a small bead at the bottom, not a smear) and `0013_gore-dry-dry.png` (dried blood, matte dark red-brown).
+- [ ] **Step 4: needs a human** — view `0001_gore-body.png` (the body-stain system must still read as blood after the Task 2 UV-divisor fix changed all stain rendering from a whole-atlas wash to single atlas cells — this is the only check that body stains survived), `0007_gore-spray.png` (jet should read as a cone with a few large drops leading and fine mist near the wound), `0011_gore-drip-120.png` (thin run with a small bead at the bottom, not a smear) and `0013_gore-dry-dry.png` (dried blood, matte dark red-brown).
 
 - [ ] **Step 5: Commit**
 

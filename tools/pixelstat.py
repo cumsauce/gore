@@ -2,10 +2,13 @@
 """Count pixels near a target colour in a PNG (stdlib only, no PIL).
 
 Usage: pixelstat.py <png> <r> <g> <b> <tol> [x0 y0 x1 y1]
+       pixelstat.py --blood <png> [x0 y0 x1 y1]
 
 Counts pixels whose |R-r|, |G-g| and |B-b| are all <= tol, inside the
-optional region (inclusive on both ends) or the whole image. Prints exactly
-one line:
+optional region (inclusive on both ends) or the whole image. With --blood,
+counts pixels matching a blood hue instead: R >= 45 and R >= 1.8*G and
+R >= 1.8*B (wet bright red through dry dark brown; rejects grey
+stone/shadows). Prints exactly one line:
 
     size=WxH count=N bbox=x0,y0,x1,y1 centroid=cx.x,cy.y
 
@@ -74,21 +77,20 @@ def load_png(path):
     return w, h, channels, out
 
 
-def main(argv):
-    if len(argv) not in (6, 10):
-        sys.exit("usage: pixelstat.py <png> <r> <g> <b> <tol> [x0 y0 x1 y1]")
-    path = argv[1]
-    r, g, b, tol = (int(v) for v in argv[2:6])
-    w, h, ch, px = load_png(path)
-    if len(argv) == 10:
-        x0, y0, x1, y1 = (int(v) for v in argv[6:10])
+def parse_region(argv, start, w, h):
+    """Optional inclusive region at argv[start:start+4], else the whole image."""
+    if len(argv) == start + 4:
+        x0, y0, x1, y1 = (int(v) for v in argv[start : start + 4])
         x0 = max(0, x0)
         y0 = max(0, y0)
         x1 = min(w - 1, x1)
         y1 = min(h - 1, y1)
-    else:
-        x0, y0, x1, y1 = 0, 0, w - 1, h - 1
+        return x0, y0, x1, y1
+    return 0, 0, w - 1, h - 1
 
+
+def count_and_report(w, h, ch, px, x0, y0, x1, y1, matches):
+    """Count matching pixels in the region and print the single result line."""
     count = 0
     minx = miny = maxx = maxy = 0
     sumx = sumy = 0
@@ -96,11 +98,7 @@ def main(argv):
         row = y * w * ch
         for x in range(x0, x1 + 1):
             o = row + x * ch
-            if (
-                abs(px[o] - r) <= tol
-                and abs(px[o + 1] - g) <= tol
-                and abs(px[o + 2] - b) <= tol
-            ):
+            if matches(px[o], px[o + 1], px[o + 2]):
                 count += 1
                 if count == 1:
                     minx = maxx = x
@@ -124,6 +122,32 @@ def main(argv):
             "size=%dx%d count=%d bbox=%d,%d,%d,%d centroid=%.1f,%.1f"
             % (w, h, count, minx, miny, maxx, maxy, sumx / count, sumy / count)
         )
+
+
+def is_blood(r, g, b):
+    return r >= 45 and r >= 1.8 * g and r >= 1.8 * b
+
+
+def main(argv):
+    if len(argv) >= 2 and argv[1] == "--blood":
+        if len(argv) not in (3, 7):
+            sys.exit("usage: pixelstat.py --blood <png> [x0 y0 x1 y1]")
+        path = argv[2]
+        w, h, ch, px = load_png(path)
+        x0, y0, x1, y1 = parse_region(argv, 3, w, h)
+        count_and_report(w, h, ch, px, x0, y0, x1, y1, is_blood)
+        return
+    if len(argv) not in (6, 10):
+        sys.exit("usage: pixelstat.py <png> <r> <g> <b> <tol> [x0 y0 x1 y1]")
+    path = argv[1]
+    r, g, b, tol = (int(v) for v in argv[2:6])
+    w, h, ch, px = load_png(path)
+    x0, y0, x1, y1 = parse_region(argv, 6, w, h)
+
+    def matches(pr, pg, pb):
+        return abs(pr - r) <= tol and abs(pg - g) <= tol and abs(pb - b) <= tol
+
+    count_and_report(w, h, ch, px, x0, y0, x1, y1, matches)
 
 
 if __name__ == "__main__":

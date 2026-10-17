@@ -1,5 +1,10 @@
 package dev.lume.gore;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+
 /**
  * The alpha mask of an item icon, used to keep blood on the icon instead of on its
  * transparent corners.
@@ -153,5 +158,106 @@ public record Silhouette(byte[] alpha, int w, int h) {
 			return new float[] { 1f, 0f };
 		}
 		return new float[] { (float) (vx / length), (float) (vy / length) };
+	}
+
+	/**
+	 * Picks {@code count} places to put a blood smear on this icon, in icon pixel
+	 * coordinates (pixel centres, so {@code (0.5, 0.5)} is the top-left pixel).
+	 *
+	 * <p>Three properties matter, and the tests pin all three. Every point lands on an
+	 * opaque pixel, so blood never floats in the transparent corner of a sword or a bow.
+	 * Points prefer the silhouette's rim, where blood clings to an edge and catches the
+	 * light, over the flat middle. And they are spread along {@link #dominantAxis()}, so
+	 * several smears on one item read as a streak down the blade rather than a cluster.
+	 *
+	 * <p>{@code seed} only jitters where inside a quantile band the point lands, so the
+	 * same item always gets the same blood: the decoration must not flicker.
+	 */
+	public static List<float[]> place(byte[] alpha, int w, int h, int count, long seed) {
+		List<float[]> points = new ArrayList<>(Math.max(0, count));
+
+		if (count <= 0) {
+			return points;
+		}
+
+		Silhouette shape = new Silhouette(alpha, w, h);
+		List<Integer> opaque = new ArrayList<>();
+
+		for (int y = 0; y < h; y++) {
+			for (int x = 0; x < w; x++) {
+				if (shape.opaque(x, y)) {
+					opaque.add(y * w + x);
+				}
+			}
+		}
+
+		if (opaque.isEmpty()) {
+			return points;
+		}
+
+		double[] edges = new double[opaque.size()];
+		double[] sortedEdges = new double[opaque.size()];
+
+		for (int i = 0; i < opaque.size(); i++) {
+			edges[i] = shape.edgeAt(opaque.get(i) % w, opaque.get(i) / w);
+			sortedEdges[i] = edges[i];
+		}
+
+		Arrays.sort(sortedEdges);
+		double median = sortedEdges[sortedEdges.length / 2];
+
+		List<Integer> rim = new ArrayList<>();
+
+		for (int i = 0; i < opaque.size(); i++) {
+			if (edges[i] > median) {
+				rim.add(opaque.get(i));
+			}
+		}
+
+		// A small or soft icon can have no pixel above its own median. Falling back to
+		// the whole shape still respects the one rule that must never break: stay on the
+		// icon.
+		if (rim.size() < count) {
+			rim = opaque;
+		}
+
+		float[] axis = shape.dominantAxis();
+		double lo = Double.MAX_VALUE;
+		double hi = -Double.MAX_VALUE;
+
+		for (int index : opaque) {
+			double projection = (index % w) * axis[0] + (index / w) * axis[1];
+			lo = Math.min(lo, projection);
+			hi = Math.max(hi, projection);
+		}
+
+		double span = hi - lo;
+		Random random = new Random(seed);
+
+		for (int i = 0; i < count; i++) {
+			double band = count == 1 ? 0.5 : i / (double) (count - 1);
+			double target = lo + span * band;
+
+			if (span > 1.0) {
+				target += (random.nextDouble() - 0.5) * span / (count * 2.0);
+			}
+
+			int best = rim.get(0);
+			double bestDistance = Double.MAX_VALUE;
+
+			for (int index : rim) {
+				double projection = (index % w) * axis[0] + (index / w) * axis[1];
+				double distance = Math.abs(projection - target);
+
+				if (distance < bestDistance) {
+					bestDistance = distance;
+					best = index;
+				}
+			}
+
+			points.add(new float[] { best % w + 0.5f, best / w + 0.5f });
+		}
+
+		return points;
 	}
 }

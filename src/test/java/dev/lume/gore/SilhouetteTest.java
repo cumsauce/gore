@@ -2,6 +2,10 @@ package dev.lume.gore;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -104,5 +108,83 @@ class SilhouetteTest {
 		assertEquals(1f, Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1]), 1e-3f, "axis must be unit length");
 		assertEquals(0f, axis[0], 0.1f, "a tall rectangle is dominated by its vertical axis, got " + axis[0] + "," + axis[1]);
 		assertEquals(1f, Math.abs(axis[1]), 0.1f, "a tall rectangle is dominated by its vertical axis, got " + axis[0] + "," + axis[1]);
+	}
+
+	/**
+	 * A bow: a thick vertical arc bowing to the right. Deliberately unlike a rectangle —
+	 * it has a curved rim, a solid middle and no straight edge, which is what makes it a
+	 * fair test of "put the smear on the icon, not in the corner".
+	 */
+	private static byte[] bowMask() {
+		byte[] alpha = new byte[N * N];
+
+		for (int y = 0; y < N; y++) {
+			double t = (y - (N - 1) / 2.0) / ((N - 1) / 2.0);
+			int centre = (int) Math.round(7.5 + 3.5 * (1.0 - t * t));
+
+			for (int dx = -3; dx <= 3; dx++) {
+				int x = centre + dx;
+
+				if (x >= 0 && x < N) {
+					alpha[y * N + x] = (byte) 255;
+				}
+			}
+		}
+
+		return alpha;
+	}
+
+	@Test
+	void smearPlacement_respectsSilhouette() {
+		byte[] alpha = bowMask();
+		Silhouette shape = new Silhouette(alpha, N, N);
+		List<float[]> points = Silhouette.place(alpha, N, N, 3, 20261017L);
+
+		assertEquals(3, points.size(), "one smear per requested point");
+
+		List<Double> edges = new ArrayList<>();
+
+		for (int y = 0; y < N; y++) {
+			for (int x = 0; x < N; x++) {
+				if (shape.opaque(x, y)) {
+					edges.add((double) shape.edgeAt(x, y));
+				}
+			}
+		}
+
+		Collections.sort(edges);
+		double median = edges.get(edges.size() / 2);
+		float[] axis = shape.dominantAxis();
+		double lo = Double.MAX_VALUE;
+		double hi = -Double.MAX_VALUE;
+
+		for (int y = 0; y < N; y++) {
+			for (int x = 0; x < N; x++) {
+				if (!shape.opaque(x, y)) {
+					continue;
+				}
+
+				double projection = x * axis[0] + y * axis[1];
+				lo = Math.min(lo, projection);
+				hi = Math.max(hi, projection);
+			}
+		}
+
+		List<Double> placed = new ArrayList<>();
+
+		for (float[] point : points) {
+			int px = (int) point[0];
+			int py = (int) point[1];
+
+			assertTrue(shape.opaque(px, py), "a smear must land on an opaque pixel, got " + px + "," + py);
+			assertTrue(shape.edgeAt(px, py) > median,
+					"a smear should cling to the rim, edge=" + shape.edgeAt(px, py) + " median=" + median);
+			placed.add((double) (px * axis[0] + py * axis[1]));
+		}
+
+		double spread = Collections.max(placed) - Collections.min(placed);
+
+		assertTrue(spread > 0.4 * (hi - lo),
+				"smears must spread along the dominant axis: spread=" + spread + " of " + (hi - lo));
 	}
 }

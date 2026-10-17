@@ -35,6 +35,18 @@ public final class ParticleLook {
 	/** Evaporation rate: {@code alpha = MIST_PEAK_ALPHA * exp(-MIST_FADE * age/lifetime)}. */
 	public static final float MIST_FADE = 2.0f;
 
+	/**
+	 * Speed in blocks/tick below which a droplet keeps its round silhouette. A drop
+	 * crawling out of a wound is a bead; only flight draws it out.
+	 */
+	public static final float STRETCH_MIN_SPEED = 0.05f;
+
+	/** Speed in blocks/tick at which a droplet is drawn at maximum elongation. */
+	public static final float STRETCH_MAX_SPEED = 0.6f;
+
+	/** Cap on the elongation: a streak is never more than three times as long as it is wide. */
+	public static final float STRETCH_MAX = 3.0f;
+
 	/** Wet blood base, matching the atlas {@code BASE} (120, 14, 14) normalised to 0..1. */
 	private static final float BASE_R = 120f / 255f;
 	private static final float BASE_G = 14f / 255f;
@@ -86,6 +98,18 @@ public final class ParticleLook {
 	public static float alphaAt(float lifeFraction) {
 		float f = clamp01(lifeFraction);
 		return MIST_PEAK_ALPHA * (float) Math.exp(-MIST_FADE * f);
+	}
+
+	/**
+	 * How far to draw out a droplet along its own velocity, as a multiple of its round
+	 * width. Motion blur in a single frame: a droplet moving a fraction of a block per
+	 * tick crosses its own width while the frame is exposed, so the eye reads a streak,
+	 * not a dot. Flat below {@link #STRETCH_MIN_SPEED} (a bead is a bead) and capped at
+	 * {@link #STRETCH_MAX} so nothing degenerates into a line.
+	 */
+	public static float stretch(float speed) {
+		float t = clamp01((speed - STRETCH_MIN_SPEED) / (STRETCH_MAX_SPEED - STRETCH_MIN_SPEED));
+		return 1.0f + (STRETCH_MAX - 1.0f) * t;
 	}
 
 	private static float clamp01(float v) {

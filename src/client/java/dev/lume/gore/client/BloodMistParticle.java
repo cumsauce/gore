@@ -17,6 +17,11 @@ import net.minecraft.world.phys.Vec3;
  * couple of ticks inside ~0.3 blocks; it then hangs where it was thrown, drifts on a
  * random walk, and evaporates in under 1.5 seconds (alpha decays exponentially and the
  * sprite advances as it spreads).
+ *
+ * <p>Deliberately does <em>not</em> stretch along its velocity: a droplet smears because
+ * it crosses its own width in a frame, whereas mist is a cloud whose droplets have
+ * already been stopped by drag. Each puff is given a fixed random roll instead, so three
+ * noise sprites do not read as three identical squares.
  */
 public class BloodMistParticle extends SingleQuadParticle {
 	private final SpriteSet sprites;
@@ -31,6 +36,9 @@ public class BloodMistParticle extends SingleQuadParticle {
 		// two frames instead of blinking out like a dot.
 		this.lifetime = ParticleLook.MIST_LIFETIME_FLOOR + this.random.nextInt(24);
 		this.hasPhysics = false;
+		// Fixed per-puff roll so the puffs do not all present the same face of the noise.
+		this.roll = (float) (this.random.nextDouble() * Math.PI * 2.0);
+		this.oRoll = this.roll;
 		this.xd = vx + (this.random.nextDouble() - 0.5) * 0.06;
 		this.yd = vy + (this.random.nextDouble() - 0.5) * 0.06;
 		this.zd = vz + (this.random.nextDouble() - 0.5) * 0.06;

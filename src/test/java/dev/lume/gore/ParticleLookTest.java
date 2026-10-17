@@ -3,6 +3,7 @@ package dev.lume.gore;
 import net.minecraft.util.ARGB;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -36,5 +37,25 @@ class ParticleLookTest {
 				"mist must hang as a cloud, not blink out: floor " + ParticleLook.MIST_LIFETIME_FLOOR);
 		assertTrue(ParticleLook.alphaAt(0.5f) >= 0.25f,
 				"mist must still be visible at mid-life: alpha " + ParticleLook.alphaAt(0.5f));
+	}
+
+	@Test
+	void stretchFactor_scalesWithSpeed() {
+		assertEquals(1.0f, ParticleLook.stretch(0.0f), 0.0f,
+				"a stationary droplet is a round blob");
+		assertEquals(1.0f, ParticleLook.stretch(0.05f), 0.0f,
+				"at the threshold speed the droplet is still round");
+		float previous = ParticleLook.stretch(0.05f);
+		for (int i = 1; i <= 12; i++) {
+			float speed = 0.05f * i;
+			float stretched = ParticleLook.stretch(speed);
+			assertTrue(stretched >= previous,
+					"stretch must increase monotonically with speed: " + stretched + " < " + previous + " at " + speed);
+			previous = stretched;
+		}
+		assertEquals(3.0f, ParticleLook.stretch(0.6f), 0.0f,
+				"a streak is capped at three times its round width");
+		assertEquals(3.0f, ParticleLook.stretch(4.0f), 0.0f,
+				"the cap holds for speeds beyond the ramp");
 	}
 }

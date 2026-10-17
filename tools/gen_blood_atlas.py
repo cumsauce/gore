@@ -56,8 +56,8 @@ SAT_CLAMP = 28.0  # max lateral offset from the tail axis, px
 
 # --- SDF rendering controls -------------------------------------------------
 EDGE_SOFT = 1.6  # px of alpha ramp across the shape boundary
-THICK_BASE = 0.78  # interior alpha floor
-THICK_AMP = 0.22  # interior alpha modulation (keeps alpha>=250 rare)
+THICK_BASE = 0.80  # interior alpha floor
+THICK_AMP = 0.19  # interior alpha modulation (keeps alpha>=250 rare)
 THICK_SCALE = 4.0  # thickness-noise wavelength, px
 BODY_WOBBLE = 0.17  # blob radius wobble amplitude
 POOL_WOBBLE = 0.12
@@ -65,6 +65,26 @@ SAT_WOBBLE = 0.22
 TAIL_SAMPLES = 28  # metaball discs along the tail bezier
 RUN_HALF_W = 3.0  # drip run strip nominal half-width, px
 RUN_WOBBLE = 2.2  # run side wobble amplitude, px
+
+# --- material --------------------------------------------------------------
+# The palette stays recognisable: RIM is DARK (edge pooling), CORE is BASE
+# lifted toward EDGE (wet film), SHEEN is EDGE brightened and desaturated.
+RIM = DARK
+CORE = (
+    int(round(BASE[0] + (EDGE[0] - BASE[0]) * 0.35)),
+    int(round(BASE[1] + (EDGE[1] - BASE[1]) * 0.35)),
+    int(round(BASE[2] + (EDGE[2] - BASE[2]) * 0.35)),
+)
+SHEEN = (
+    min(255, int(round(EDGE[0] * 1.66))),
+    min(255, int(round(EDGE[1] * 5.4))),
+    min(255, int(round(EDGE[2] * 6.0))),
+)
+RIM_WIDTH = 7.0  # px of rim->core colour ramp
+SPEC_SCALE = 0.40  # specular radius as a fraction of the core radius
+SPEC_OFFSET = 0.34  # specular offset as a fraction of the core radius
+SPEC_FALLOFF = 2.2  # gaussian tightness of the specular blob
+SPEC_MIN_R = 2.5  # floor so the narrowest band still gets a highlight
 
 SEED = 20261016
 
@@ -215,28 +235,50 @@ def put(buf, x, y, rgba, clip):
         buf[o + 3] = rgba[3]
 
 
-def _shade(t, thick):
-    """Colour ramp: EDGE at the rim (t=0) -> BASE -> DARK where thick (t=1).
+def spec_at(px, py, specs):
+    """Wet specular: gaussian blob per highlight, 0 where there is none."""
+    best = 0.0
+    for sx, sy, sr, strength in specs:
+        if sr <= 0.0:
+            continue
+        d = math.hypot(px - sx, py - sy) / sr
+        if d >= 2.5:
+            continue
+        v = math.exp(-d * d * SPEC_FALLOFF) * strength
+        if v > best:
+            best = v
+    return best
 
-    Thick, deep interior goes most of the way to DARK so the splat has a
-    readable thickness gradient instead of one flat colour.
+
+def _material(t, thick, spec):
+    """Rim pooling -> wet core -> specular highlight.
+
+    t is depth into the shape (0 at the rim, 1 well inside); thick is the
+    thickness-noise term; spec is the wet-highlight strength 0..1.
     """
-    u = _smoothstep(0.0, 0.55, t)
-    r = EDGE[0] + (BASE[0] - EDGE[0]) * u
-    g = EDGE[1] + (BASE[1] - EDGE[1]) * u
-    b = EDGE[2] + (BASE[2] - EDGE[2]) * u
+    u = _smoothstep(0.0, 0.85, t)
+    r = RIM[0] + (CORE[0] - RIM[0]) * u
+    g = RIM[1] + (CORE[1] - RIM[1]) * u
+    b = RIM[2] + (CORE[2] - RIM[2]) * u
+
+    # Thicker blood still darkens a little, but the core stays readable.
     dark = (thick - THICK_BASE) / THICK_AMP
     dark = 0.0 if dark < 0.0 else (1.0 if dark > 1.0 else dark)
-    k = 0.22 + 0.58 * dark * (0.35 + 0.65 * t)
-    return (
-        int(round(r + (DARK[0] - r) * k)),
-        int(round(g + (DARK[1] - g) * k)),
-        int(round(b + (DARK[2] - b) * k)),
-    )
+    k = 0.18 * dark * (1.0 - 0.5 * u)
+    r += (DARK[0] - r) * k
+    g += (DARK[1] - g) * k
+    b += (DARK[2] - b) * k
+
+    if spec > 0.0:
+        r += (SHEEN[0] - r) * spec
+        g += (SHEEN[1] - g) * spec
+        b += (SHEEN[2] - b) * spec
+
+    return (int(round(r)), int(round(g)), int(round(b)))
 
 
-def render_shape(buf, clip, prims, seed):
-    """Rasterise an SDF union with a soft alpha ramp and thickness shading."""
+def render_shape(buf, clip, prims, seed, specs=()):
+    """Rasterise an SDF union with a soft alpha ramp and a material pass."""
     x0, y0, x1, y1 = clip
     for y in range(y0, y1 + 1):
         for x in range(x0, x1 + 1):
@@ -250,9 +292,9 @@ def render_shape(buf, clip, prims, seed):
             alpha = cov * thick
             if alpha <= 0.004:
                 continue
-            t = -d / 6.0
+            t = -d / RIM_WIDTH
             t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
-            r, g, b = _shade(t, thick)
+            r, g, b = _material(t, thick, spec_at(x + 0.5, y + 0.5, specs))
             a = int(round(255.0 * min(1.0, alpha)))
             put(buf, x, y, (r, g, b, a), clip)
 
@@ -270,6 +312,15 @@ def draw_impact(buf, cell_x, cell_y, elong, dens, rng):
     seed = (cell_x * 131 + cell_y * 17 + elong * 97 + dens * 13) & 0xFFFF
 
     prims = [(0, cx, cy, b, a, seed, BODY_WOBBLE)]
+    # Wet highlight, off-centre toward the light (upper left of the body).
+    specs = [
+        (
+            cx - SPEC_OFFSET * b,
+            cy - SPEC_OFFSET * a * 0.55,
+            max(SPEC_MIN_R, SPEC_SCALE * b),
+            1.0,
+        )
+    ]
 
     tip_y = cell_y + TAIL_TIP
     p0 = (cx + rng.uniform(-1.0, 1.0), cy - a * 0.15)
@@ -295,7 +346,7 @@ def draw_impact(buf, cell_x, cell_y, elong, dens, rng):
             ]
             prims.append((1, micro))
 
-    render_shape(buf, clip, prims, seed)
+    render_shape(buf, clip, prims, seed, specs)
 
 
 def draw_pool(buf, cell_x, cell_y, radius, seed):
@@ -304,7 +355,15 @@ def draw_pool(buf, cell_x, cell_y, radius, seed):
     prims = [
         (0, cell_x + 31.5, cell_y + 31.5, radius, radius * 0.92, seed, POOL_WOBBLE)
     ]
-    render_shape(buf, clip, prims, seed)
+    specs = [
+        (
+            cell_x + 31.5 - SPEC_OFFSET * radius,
+            cell_y + 31.5 - SPEC_OFFSET * radius * 0.92,
+            max(SPEC_MIN_R, SPEC_SCALE * radius),
+            1.0,
+        )
+    ]
+    render_shape(buf, clip, prims, seed, specs)
 
 
 def draw_run(buf, cell_x, cell_y, seed):
@@ -327,7 +386,15 @@ def draw_bead(buf, cell_x, cell_y, seed):
     """Drip leading bead: a noise-modulated blob centred in the cell."""
     clip = (cell_x, cell_y, cell_x + CELL - 1, cell_y + CELL - 1)
     prims = [(0, cell_x + 31.5, cell_y + 31.5, 9.0, 8.0, seed, BODY_WOBBLE)]
-    render_shape(buf, clip, prims, seed)
+    specs = [
+        (
+            cell_x + 31.5 - SPEC_OFFSET * 8.0,
+            cell_y + 31.5 - SPEC_OFFSET * 4.4,
+            max(SPEC_MIN_R, SPEC_SCALE * 8.0),
+            1.0,
+        )
+    ]
+    render_shape(buf, clip, prims, seed, specs)
 
 
 # --- PNG output -----------------------------------------------------------

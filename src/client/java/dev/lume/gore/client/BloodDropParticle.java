@@ -1,8 +1,10 @@
 package dev.lume.gore.client;
 
 import dev.lume.gore.Ballistics;
+import dev.lume.gore.ParticleLook;
 import dev.lume.gore.SprayModel;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.util.ARGB;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
 import net.minecraft.client.particle.SingleQuadParticle;
@@ -25,16 +27,19 @@ public class BloodDropParticle extends SingleQuadParticle {
 	public BloodDropParticle(ClientLevel level, double x, double y, double z, double vx, double vy, double vz, SpriteSet sprites) {
 		super(level, x, y, z, sprites.get(level.getRandom()));
 		this.radiusM = SprayModel.dropRadiusM(this.random);
-		this.quadSize = (float) (0.02 + 0.04 * this.radiusM / 1e-3);
+		this.quadSize = (float) (0.03 + 0.05 * this.radiusM / 1e-3);
 		this.lifetime = 60;
 		this.hasPhysics = true;
 		this.xd = vx + (this.random.nextDouble() - 0.5) * 0.04;
 		this.yd = vy + (this.random.nextDouble() - 0.5) * 0.04;
 		this.zd = vz + (this.random.nextDouble() - 0.5) * 0.04;
-		this.rCol = 0.55f;
-		this.gCol = 0.06f;
-		this.bCol = 0.055f;
-		this.alpha = 1.0f;
+		// Size, colour and opacity all come from the physical radius: a big droplet is
+		// a dark opaque slab, a fleck is pale and see-through. See ParticleLook.
+		int look = ParticleLook.look((float) this.radiusM);
+		this.rCol = ARGB.red(look) / 255f;
+		this.gCol = ARGB.green(look) / 255f;
+		this.bCol = ARGB.blue(look) / 255f;
+		this.alpha = ARGB.alpha(look) / 255f;
 	}
 
 	@Override

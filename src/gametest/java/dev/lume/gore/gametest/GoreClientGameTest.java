@@ -236,7 +236,11 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			singleplayer.getServer().runCommand(
 					"damage @e[type=minecraft:cow,limit=1] 120 minecraft:player_attack at "
 							+ (fx - 3) + " " + (fy + 1) + " " + (fz - 2.5));
-			context.waitTicks(2);
+			// Captured after the hurt animation ends (hurtTime is 10 ticks). At +2 the
+			// cow is still flashing red, and its whole model passes the blood hue test,
+			// which swamps any count of the spray itself. At +12 the flash is gone, the
+			// droplets have landed, and what is left on screen is the mist cloud.
+			context.waitTicks(12);
 			context.takeScreenshot("gore-spray");
 			context.waitTicks(40);
 			context.takeScreenshot("gore-spray-settled");

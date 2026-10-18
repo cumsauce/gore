@@ -81,4 +81,62 @@ class CubeProjectionTest {
 			}
 		}
 	}
+
+	@Test
+	void projectAtWithoutPointMatchesProject() {
+		Optional<CubeProjection.Result> without = CubeProjection.projectAt(
+				List.of(box(-1.0F, -1.0F, -1.0F, 2.0F, 2.0F, 2.0F, "body")),
+				new float[] {1.0F, 0.0F, 0.0F}, null);
+		Optional<CubeProjection.Result> with = CubeProjection.projectAt(
+				List.of(box(-1.0F, -1.0F, -1.0F, 2.0F, 2.0F, 2.0F, "body")),
+				new float[] {1.0F, 0.0F, 0.0F}, new float[] {0.0F, 0.0F, 0.0F});
+
+		assertTrue(without.isPresent());
+		assertTrue(with.isPresent());
+		assertEquals(without.get().normal()[0], with.get().normal()[0], 1.0E-4F);
+		assertEquals(without.get().point()[0], with.get().point()[0], 1.0E-4F);
+	}
+
+	@Test
+	void projectAtTiebreakPicksFaceNearestHitPoint() {
+		// Two coplanar +X-facing slabs side by side along X. Impact comes from +X,
+		// so both faces face the wound equally; the hit point breaks the tie toward
+		// the slab the blow actually met.
+		List<CubeProjection.Box> boxes = List.of(
+				box(-2.0F, -1.0F, -1.0F, 1.0F, 2.0F, 2.0F, "left"),
+				box( 1.0F, -1.0F, -1.0F, 1.0F, 2.0F, 2.0F, "right"));
+
+		// Hit point sits on the right slab.
+		Optional<CubeProjection.Result> hit = CubeProjection.projectAt(
+				boxes, new float[] {1.0F, 0.0F, 0.0F}, new float[] {1.5F, 0.0F, 0.0F});
+
+		assertTrue(hit.isPresent());
+		assertEquals("right", hit.get().partName());
+		assertEquals(2.0F, hit.get().point()[0], 1.0E-4F);
+
+		// Hit point sits on the left slab.
+		hit = CubeProjection.projectAt(
+				boxes, new float[] {1.0F, 0.0F, 0.0F}, new float[] {-1.5F, 0.0F, 0.0F});
+
+		assertTrue(hit.isPresent());
+		assertEquals("left", hit.get().partName());
+		assertEquals(-1.0F, hit.get().point()[0], 1.0E-4F);
+	}
+
+	@Test
+	void projectAtWithKnownHitPointStillPicksFacingFace() {
+		// A single +X-facing slab. Impact comes from +X; the hit point is on the
+		// slab's surface, so the face is chosen by facing and the point is the
+		// recorded hit.
+		List<CubeProjection.Box> boxes = List.of(
+				box(-2.0F, -1.0F, -1.0F, 1.0F, 2.0F, 2.0F, "front"));
+
+		Optional<CubeProjection.Result> hit = CubeProjection.projectAt(
+				boxes, new float[] {1.0F, 0.0F, 0.0F}, new float[] {-1.0F, 0.5F, 0.0F});
+
+		assertTrue(hit.isPresent());
+		assertEquals("front", hit.get().partName());
+		assertEquals(1.0F, hit.get().normal()[0], 1.0E-4F);
+		assertEquals(-1.0F, hit.get().point()[0], 1.0E-4F);
+	}
 }

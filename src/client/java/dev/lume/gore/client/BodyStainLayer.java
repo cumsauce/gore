@@ -144,6 +144,19 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 			return;
 		}
 
+		// The recorded hit point, mapped from the root frame into this part's
+		// own frame (model units, 16 per block). When the stain has no hit
+		// point (older stains, or a degenerate hit dead-centre on the origin)
+		// this stays null and the renderer falls back to inferring the face.
+		Vector3f hitLocal = null;
+		if (stain.hasHit()) {
+			float step = 1.0f / 32.0f;
+			Vector3f hitRoot = new Vector3f(
+					stain.hitX() * step, stain.hitY() * step, stain.hitZ() * step);
+			hitLocal = StainAnchor.restingPosition(part, hitRoot);
+			hitLocal.mul(16.0f);
+		}
+
 		poseStack.pushPose();
 
 		if (part != root) {
@@ -152,24 +165,24 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 
 		part.translateAndRotate(poseStack);
 
-		// The face of the part the wound landed on. This is the cube surface
-		// itself, not the part's far extent along the wound direction, so the
-		// stain sits flat on the body instead of on a bounding volume around it.
-		//
-		// Placement is still inferred rather than taken from the recorded hit
-		// point: GoreStain carries one (see its documentation) and the server
-		// uses it for the spray origin, but mapping it onto a model part needs a
-		// unit-correct pass through the renderer's transform that this renderer
-		// does not make cheap. The inferred face is stable and lands on the skin,
-		// which is what matters visually.
-		Optional<CubeProjection.Result> face = StainAnchor.projectOnto(part, local);
+		// Choose the face the wound landed on by the outward direction the
+		// wound faces, using the hit point only to break ties between coplanar
+		// surfaces. This keeps a stain on the skin instead of on a bounding
+		// volume, and lands it at the hit point when one is recorded.
+		List<CubeProjection.Box> boxes = StainAnchor.boxesOf(part);
+		Optional<CubeProjection.Result> face = CubeProjection.projectAt(
+				boxes,
+				new float[] {local.x(), local.y(), local.z()},
+				hitLocal == null ? null : new float[] {hitLocal.x(), hitLocal.y(), hitLocal.z()});
 
 		if (face.isEmpty()) {
 			poseStack.popPose();
 			return;
 		}
 
-		float[] point = face.get().point();
+		float[] point = hitLocal == null
+				? face.get().point()
+				: new float[] {hitLocal.x(), hitLocal.y(), hitLocal.z()};
 		float[] normal = face.get().normal();
 		Vector3f normalVec = new Vector3f(normal[0], normal[1], normal[2]);
 		CubeProjection.Box box = face.get().box();
@@ -189,14 +202,18 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 		// corners, so that is how far its centre must stay from the edge.
 		float room = Math.max(0.0f, minHalf - halfSize * 1.4142135f);
 
-		// The face centre, in the part's own frame: the box centre pushed out
-		// along the normal to the face plane. Both placements are expressed as an
-		// offset from it, so the same clamp keeps either on the face.
-		float halfN = CubeProjection.extentAlong(box, normalVec.x(), normalVec.y(), normalVec.z());
-		Vector3f centre = new Vector3f(
-				(box.minX() + box.maxX()) * 0.5f + normalVec.x() * halfN,
-				(box.minY() + box.maxY()) * 0.5f + normalVec.y() * halfN,
-				(box.minZ() + box.maxZ()) * 0.5f + normalVec.z() * halfN);
+		Vector3f centre;
+		if (hitLocal != null) {
+			centre = new Vector3f(hitLocal);
+		} else {
+			// The face centre, in the part's own frame: the box centre pushed out
+			// along the normal to the face plane.
+			float halfN = CubeProjection.extentAlong(box, normalVec.x(), normalVec.y(), normalVec.z());
+			centre = new Vector3f(
+					(box.minX() + box.maxX()) * 0.5f + normalVec.x() * halfN,
+					(box.minY() + box.maxY()) * 0.5f + normalVec.y() * halfN,
+					(box.minZ() + box.maxZ()) * 0.5f + normalVec.z() * halfN);
+		}
 
 		float du = 0.0f;
 		float dv = 0.0f;

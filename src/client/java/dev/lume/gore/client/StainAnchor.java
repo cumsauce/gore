@@ -194,6 +194,27 @@ public final class StainAnchor {
 		return local.normalize();
 	}
 
+	/**
+	 * Carries a root-frame point into the part's own frame, using the part's
+	 * resting pose — its initial pose, the one its live animation is applied on
+	 * top of. Unlike {@link #restingDirection}, this includes the part's
+	 * translation, so a point in the root frame comes back in the part's frame.
+	 *
+	 * <p>Used to map a recorded hit point onto a model part so the wound can be
+	 * placed exactly where the blow landed.
+	 */
+	public static Vector3f restingPosition(ModelPart part, Vector3f worldPoint) {
+		PoseStack poseStack = new PoseStack();
+		PartPose live = part.storePose();
+
+		part.resetPose();
+		part.translateAndRotate(poseStack);
+		part.loadPose(live);
+
+		return new Matrix4f(poseStack.last().pose()).invert()
+				.transformPosition(new Vector3f(worldPoint));
+	}
+
 	/** Drops the per-model caches; called when render state is invalidated (resource reload). */
 	public static void invalidate() {
 		synchronized (ALL_PARTS) {

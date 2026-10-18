@@ -62,7 +62,7 @@ public final class CubeProjection {
 	}
 
 	/** Outward normals of the six faces, in the order {@link #faceCentre} expects. */
-	private static final float[][] NORMALS = {
+	public static final float[][] NORMALS = {
 			{1.0F, 0.0F, 0.0F},
 			{-1.0F, 0.0F, 0.0F},
 			{0.0F, 1.0F, 0.0F},
@@ -83,8 +83,28 @@ public final class CubeProjection {
 	 * Among faces that face the wound equally well, the one furthest along
 	 * {@code impactDir} wins — that is the surface a ray from the wound meets
 	 * first, so a stain on a limb is not hidden behind the torso.
+	 *
+	 * @see #projectAt(List, float[], float[])
 	 */
 	public static Optional<Result> project(List<Box> boxes, float[] impactDir) {
+		return projectAt(boxes, impactDir, null);
+	}
+
+	/**
+	 * Like {@link #project}, but when a hit point is known the wound is placed on
+	 * the face the blow actually met.
+	 *
+	 * <p>The face is chosen by the {@code outward} direction the wound faces: the
+	 * side whose outward normal best matches {@code impactDir} wins, exactly as in
+	 * {@link #project}. On a tie between coplanar surfaces the face whose centre is
+	 * closest to {@code worldPoint} wins, so the stain lands at the hit point
+	 * rather than on whichever part the surface scan happened to visit first.
+	 *
+	 * <p>{@code worldPoint} is the hit point in this {@code Box} frame — model
+	 * units (16 per block) expressed relative to the part the boxes came from.
+	 * When it is {@code null} this behaves identically to {@link #project}.
+	 */
+	public static Optional<Result> projectAt(List<Box> boxes, float[] impactDir, float[] worldPoint) {
 		if (boxes == null || boxes.isEmpty() || impactDir == null) {
 			return Optional.empty();
 		}
@@ -99,6 +119,12 @@ public final class CubeProjection {
 		float ix = impactDir[0] / length;
 		float iy = impactDir[1] / length;
 		float iz = impactDir[2] / length;
+
+		boolean pointKnown = worldPoint != null
+				&& Float.isFinite(worldPoint[0]) && Float.isFinite(worldPoint[1]) && Float.isFinite(worldPoint[2]);
+		float px = pointKnown ? worldPoint[0] : 0.0F;
+		float py = pointKnown ? worldPoint[1] : 0.0F;
+		float pz = pointKnown ? worldPoint[2] : 0.0F;
 
 		Result best = null;
 		float bestFacing = -2.0F;
@@ -115,10 +141,21 @@ public final class CubeProjection {
 				}
 
 				float[] centre = faceCentre(box, face);
-				float depth = centre[0] * ix + centre[1] * iy + centre[2] * iz;
+				float depth;
 
-				// Strictly better facing always wins; on a tie the nearer surface
-				// does, so two coplanar parts resolve to the one in front.
+				if (pointKnown) {
+					// Distance from the face centre to the hit point, so a tie in
+					// facing is resolved by proximity to where the blow landed
+					// rather than by arbitrary box order.
+					depth = -(px - centre[0]) * (px - centre[0])
+							- (py - centre[1]) * (py - centre[1])
+							- (pz - centre[2]) * (pz - centre[2]);
+				} else {
+					depth = centre[0] * ix + centre[1] * iy + centre[2] * iz;
+				}
+
+				// Strictly better facing always wins; on a tie the point-nearest
+				// surface does (or the deeper surface when no point is known).
 				if (facing > bestFacing + 1.0E-5F
 						|| (facing >= bestFacing - 1.0E-5F && depth > bestDepth)) {
 					bestFacing = facing;
@@ -131,7 +168,7 @@ public final class CubeProjection {
 		return Optional.ofNullable(best);
 	}
 
-	private static float[] faceCentre(Box box, int face) {
+	public static float[] faceCentre(Box box, int face) {
 		float cx = (box.minX() + box.maxX()) * 0.5F;
 		float cy = (box.minY() + box.maxY()) * 0.5F;
 		float cz = (box.minZ() + box.maxZ()) * 0.5F;

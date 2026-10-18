@@ -86,8 +86,10 @@ public class GoreClient implements ClientModInitializer {
 		InvalidateRenderStateCallback.EVENT.register(StainAnchor::invalidate);
 
 		// One registration covers every living entity type.
-		LivingEntityRenderLayerRegistrationCallback.EVENT.register((type, renderer, helper, context) ->
-				helper.register(new BodyStainLayer(renderer)));
+		LivingEntityRenderLayerRegistrationCallback.EVENT.register((type, renderer, helper, context) -> {
+			helper.register(new BodyStainLayer(renderer));
+			helper.register(new BodyDamageLayer(renderer));
+		});
 
 		// Entity render states are produced during level extraction and only
 		// submitted later, so this is the earliest legal point that can write
@@ -133,6 +135,7 @@ public class GoreClient implements ClientModInitializer {
 
 		TickRateManager tickRate = level.tickRateManager();
 		Map<StateKey, List<GoreStain>> byKey = null;
+		Map<StateKey, Long> byKeyTick = null;
 
 		for (int entityId : STAINED_ENTITIES) {
 			Entity entity = level.getEntity(entityId);
@@ -155,13 +158,16 @@ public class GoreClient implements ClientModInitializer {
 
 			if (byKey == null) {
 				byKey = new HashMap<>();
+				byKeyTick = new HashMap<>();
 			}
 
-			byKey.put(new StateKey(
+			StateKey key = new StateKey(
 					Mth.lerp(partialTick, entity.xOld, entity.getX()),
 					Mth.lerp(partialTick, entity.yOld, entity.getY()),
 					Mth.lerp(partialTick, entity.zOld, entity.getZ()),
-					entity.getType()), stains);
+					entity.getType());
+			byKey.put(key, stains);
+			byKeyTick.put(key, StainManager.receivedTick(entityId));
 		}
 
 		if (byKey == null) {
@@ -175,6 +181,10 @@ public class GoreClient implements ClientModInitializer {
 				// Fabric injects FabricRenderState into EntityRenderState at
 				// runtime; the cast is the standard bridge, no Mixin of ours.
 				((FabricRenderState) state).setData(StainStateKeys.STAINS, stains);
+				Long tick = byKeyTick.get(new StateKey(state.x, state.y, state.z, state.entityType));
+				if (tick != null) {
+					((FabricRenderState) state).setData(StainStateKeys.RECEIVED_TICK, tick);
+				}
 			}
 		}
 	}

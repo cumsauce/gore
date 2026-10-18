@@ -3,10 +3,12 @@ package dev.lume.gore.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.lume.gore.BloodAppearance;
 import dev.lume.gore.CubeProjection;
+import dev.lume.gore.Flow;
 import dev.lume.gore.GoreStain;
 import java.util.List;
 import java.util.Optional;
 import net.fabricmc.fabric.api.client.rendering.v1.FabricRenderState;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -146,8 +148,37 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 			long seed = BloodAppearance.seedFor(stain.sourceType(), stain.dirX(), stain.dirY(), stain.dirZ(),
 					stain.size(), stain.rot(), stain.variant(), index);
 			int color = BloodAppearance.tint(seed, 0.0f);
-			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light,
-					new Vector3f(normal[0], normal[1], normal[2]), color);
+			Vector3f normalVec = new Vector3f(normal[0], normal[1], normal[2]);
+			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, normalVec, color);
+
+			// M5: wound lacerations (variant >= 16) grow a body drip downward
+			// from the wound, driven by Flow like wall drips.
+			if (stain.variant() >= 16) {
+				long received = 0L;
+				if (state instanceof FabricRenderState frs) {
+					Long rt = frs.getData(StainStateKeys.RECEIVED_TICK);
+					if (rt != null) received = rt;
+				}
+				Minecraft mc = Minecraft.getInstance();
+				long now = (mc.level != null) ? mc.level.getGameTime() : 0L;
+				long age = now - received;
+				float f = Flow.length(age);
+				if (f > 0.0f) {
+					Vector3f gravity = new Vector3f(0.0f, -1.0f, 0.0f);
+					float gdot = gravity.dot(normalVec);
+					Vector3f downward = new Vector3f(
+							gravity.x() - normalVec.x() * gdot,
+							gravity.y() - normalVec.y() * gdot,
+							gravity.z() - normalVec.z() * gdot);
+					if (downward.lengthSquared() < 1.0e-8f) {
+						downward.set(1.0f, 0.0f, 0.0f);
+					} else {
+						downward.normalize();
+					}
+					StainQuad.submitBodyDrip(collector, poseStack, stain.size(), light,
+							normalVec, downward, f, color);
+				}
+			}
 		}
 
 		poseStack.popPose();

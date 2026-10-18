@@ -38,6 +38,10 @@ ART_CELLS = 16  # cells 0-15 carry art; 16-63 stay empty
 BASE = (120, 14, 14, 255)
 DARK = (90, 8, 8, 255)
 EDGE = (150, 24, 20, 255)
+# Wound colours: a dark laceration with raised (slightly lighter) edges.
+WOUND_DARK = (25, 2, 2, 255)
+WOUND_RAISED = (100, 12, 10, 255)
+WOUND_EDGE = (135, 18, 14, 255)
 
 # elongation band -> b/a (semi-minor across tail / semi-major along tail)
 ELONGATION = (1.0, 0.7, 0.45, 0.25)
@@ -397,6 +401,53 @@ def draw_bead(buf, cell_x, cell_y, seed):
     render_shape(buf, clip, prims, seed, specs)
 
 
+def draw_wound(buf, cell_x, cell_y, seed):
+    """Wound laceration: a jagged dark cut with raised (lighter) edges.
+
+    Not a splat — a gash. Dark in the centre (the cut itself), raised torn
+    skin on either side, with a little blood pooling at the ends. Variant 16+.
+    """
+    clip = (cell_x, cell_y, cell_x + CELL, cell_y + CELL)
+    # Jagged cut running roughly horizontally, with vertical jitter.
+    cut_samples = []
+    edge_top = []
+    edge_bot = []
+    for i in range(10):
+        t = i / 9.0
+        x = cell_x + 6 + t * 52
+        y = cell_y + 32 + (value_noise(t * 4.0, 0.3, seed) - 0.5) * 8
+        w = 2.5 + 1.0 * (1.0 - abs(2.0 * t - 1.0))
+        cut_samples.append(((x, y), w))
+        edge_top.append(((x, y - 5.0), 1.2))
+        edge_bot.append(((x, y + 5.0), 1.2))
+    prims = [(1, cut_samples), (1, edge_top), (1, edge_bot)]
+
+    cx0, cy0, cw, ch = clip
+    for yy in range(cy0, cy0 + ch):
+        for xx in range(cx0, cx0 + cw):
+            d = sdf_at(xx + 0.5, yy + 0.5, prims)
+            if d > EDGE_SOFT:
+                continue
+            cov = _smoothstep(EDGE_SOFT, -EDGE_SOFT, d)
+            thick = THICK_BASE + THICK_AMP * fbm(
+                xx / THICK_SCALE, yy / THICK_SCALE, seed
+            )
+            alpha = cov * thick
+            # t=1 at centre (darkest), t=0 at edge (raised).
+            t = min(1.0, max(0.0, -d / RIM_WIDTH))
+            u = _smoothstep(0.0, 0.6, t)
+            r = WOUND_EDGE[0] + (WOUND_DARK[0] - WOUND_EDGE[0]) * u
+            g = WOUND_EDGE[1] + (WOUND_DARK[1] - WOUND_EDGE[1]) * u
+            b = WOUND_EDGE[2] + (WOUND_DARK[2] - WOUND_EDGE[2]) * u
+            k = 0.30 * (1.0 - u)
+            r += (WOUND_RAISED[0] - r) * k
+            g += (WOUND_RAISED[1] - g) * k
+            b += (WOUND_RAISED[2] - b) * k
+            rgb = (int(round(r)), int(round(g)), int(round(b)))
+            a = round(255 * min(1.0, alpha))
+            put(buf, xx, yy, (rgb[0], rgb[1], rgb[2], a), (cx0, cy0, cw, ch))
+
+
 # --- PNG output -----------------------------------------------------------
 
 
@@ -443,6 +494,9 @@ def main():
     # drip: full-height run strip (14) and its leading bead (15)
     draw_run(buf, (14 % GRID) * CELL, (14 // GRID) * CELL, SEED + 300)
     draw_bead(buf, (15 % GRID) * CELL, (15 // GRID) * CELL, SEED + 301)
+
+    # wound: a dark laceration with raised edges (cell 16)
+    draw_wound(buf, (16 % GRID) * CELL, (16 // GRID) * CELL, SEED + 400)
 
     write_png(OUT_PATH, SIZE, SIZE, buf)
     opaque = sum(1 for i in range(3, len(buf), 4) if buf[i])

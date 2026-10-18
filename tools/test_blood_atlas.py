@@ -38,7 +38,7 @@ ATLAS = os.path.join(
 SIZE = 512
 CELL = 64
 GRID = 8
-ART_CELLS = 16
+ART_CELLS = 17
 
 OPAQUE = 128  # "has blood here"
 FULLY_OPAQUE = 250  # "effectively flat/opaque" for the plateau check

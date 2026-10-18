@@ -43,10 +43,39 @@ public class StainStore {
 	public void add(int entityId, GoreStain stain) {
 		Objects.requireNonNull(stain, "stain");
 		List<GoreStain> list = byEntity.computeIfAbsent(entityId, id -> new ArrayList<>());
-		while (list.size() >= MAX_STAINS) {
-			list.remove(0);
+
+		// M5 accumulation: a new wound on the same body region merges into the
+		// existing one instead of stacking, mirroring DecalMerge for wall decals.
+		// Same source type and a direction within tolerance counts as "same region".
+		int mergeIdx = -1;
+		for (int i = 0; i < list.size(); i++) {
+			GoreStain existing = list.get(i);
+			if (existing.sourceType() != stain.sourceType()) continue;
+			int ddx = Math.abs(existing.dirX() - stain.dirX());
+			int ddy = Math.abs(existing.dirY() - stain.dirY());
+			int ddz = Math.abs(existing.dirZ() - stain.dirZ());
+			if (ddx + ddy + ddz < 60) {
+				mergeIdx = i;
+				break;
+			}
 		}
-		list.add(stain);
+
+		if (mergeIdx >= 0) {
+			GoreStain existing = list.get(mergeIdx);
+			float newSize = Math.min(0.6f, existing.size() * 1.15f);
+			GoreStain merged = new GoreStain(
+					existing.sourceType(),
+					existing.dirX(), existing.dirY(), existing.dirZ(),
+					newSize,
+					existing.rot(),
+					existing.variant());
+			list.set(mergeIdx, merged);
+		} else {
+			while (list.size() >= MAX_STAINS) {
+				list.remove(0);
+			}
+			list.add(stain);
+		}
 	}
 
 	/** Returns an immutable copy of the entity's stains, or an empty list if unknown. */

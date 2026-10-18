@@ -1,6 +1,7 @@
 package dev.lume.gore.gametest;
 
 import dev.lume.gore.Decal;
+import dev.lume.gore.DecalStore;
 import dev.lume.gore.client.DecalManager;
 import dev.lume.gore.client.DecalRenderer;
 import java.util.List;
@@ -12,8 +13,11 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ParticleStatus;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -384,6 +388,106 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.takeScreenshot("gore-death");
 			context.waitTicks(45);
 			context.takeScreenshot("gore-death-settled");
+
+			// Task 10: rain washes wall decals off. Place a decal on the clean wall
+			// at fz+4 (top of the wall so the block above sees the sky), set weather
+			// to rain, wait ~110 ticks (RAIN_WASH_TICKS=4800 * dryScale 0.02 = 96
+			// ticks of rain exposure at this scale), and verify the decal is gone
+			// from both the server store and the client mirror.
+			singleplayer.getServer().runCommand("kill @e[type=minecraft:cow]");
+			context.waitTicks(5);
+
+			int rainX = fx;
+			int rainY = fy + 5;
+			int rainZ = fz + 4;
+
+			// Client-side mirror (as all other decal scenes do)
+			context.runOnClient(mc -> {
+				DecalManager.clear();
+				DecalRenderer.clearDrips();
+				long born = mc.level.getGameTime();
+				DecalManager.addDecals(List.of(new Decal(rainX, rainY, rainZ,
+						Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 9, born)));
+			});
+			context.waitTicks(5);
+
+			// Same decal on the server store so DecalAging can wash it off.
+			// Clear the store first so this decal doesn't merge with a legacy
+			// (born=0) decal from an earlier scene — DecalAging skips born=0.
+			singleplayer.getServer().computeOnServer(server -> {
+				ServerLevel level = server.getLevel(Level.OVERWORLD);
+				DecalStore store = level.getDataStorage().computeIfAbsent(DecalStore.TYPE);
+				store.removeAll(store.getAll());
+				store.addOrMerge(new Decal(rainX, rainY, rainZ,
+						Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 9, level.getGameTime()));
+				return null;
+			});
+
+			// Look at the wall so the decal is in frame
+			context.getInput().lookAt(new BlockPos(rainX, rainY, rainZ));
+			context.waitTicks(5);
+			context.takeScreenshot("gore-rain-wet");
+
+			// Task 10: decay removes old decals. Place a decal born long ago on
+			// both the server store and the client mirror, wait one tick, and
+			// verify DecalAging removes it from both (server removes from store,
+			// broadcasts DecalsGonePayload, client drops it). This uses the same
+			// DecalAging infrastructure as rain washing.
+			singleplayer.getServer().runCommand("kill @e[type=minecraft:cow]");
+			context.waitTicks(5);
+
+			int decayX = fx;
+			int decayY = fy + 5;
+			int decayZ = fz + 4;
+
+			// Client-side mirror (same literal born as server so remove() matches by equals)
+			context.runOnClient(mc -> {
+				DecalManager.clear();
+				DecalRenderer.clearDrips();
+				DecalManager.addDecals(List.of(new Decal(decayX, decayY, decayZ,
+						Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 9, -100000L)));
+			});
+			context.waitTicks(5);
+
+			// Same decal on the server store, born long ago so Drying.fade removes it
+			singleplayer.getServer().computeOnServer(server -> {
+				ServerLevel level = server.getLevel(Level.OVERWORLD);
+				DecalStore store = level.getDataStorage().computeIfAbsent(DecalStore.TYPE);
+				store.removeAll(store.getAll());
+				store.addOrMerge(new Decal(decayX, decayY, decayZ,
+						Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 9, -100000L));
+				return null;
+			});
+			context.waitTicks(5);
+
+			// Look at the wall so the decal is in frame before it disappears
+			context.getInput().lookAt(new BlockPos(decayX, decayY, decayZ));
+			context.waitTicks(5);
+			context.takeScreenshot("gore-decay-wet");
+
+			// Give DecalAging one tick to remove the faded decal
+			context.waitTicks(3);
+
+			// Check server store first
+			singleplayer.getServer().computeOnServer(server -> {
+				ServerLevel level = server.getLevel(Level.OVERWORLD);
+				DecalStore store = level.getDataStorage().computeIfAbsent(DecalStore.TYPE);
+				LOGGER.info("[gore-gametest] after decay store size={}", store.getAll().size());
+				return null;
+			});
+
+			// Give the client a tick to receive DecalsGonePayload
+			context.waitTicks(2);
+
+			// Verify the decal is gone from the client mirror
+			context.computeOnClient(mc -> {
+				List<Decal> remaining = DecalManager.snapshot();
+				if (!remaining.isEmpty()) {
+					throw new IllegalStateException("decayed decal should be removed: " + remaining);
+				}
+				return true;
+			});
+			context.takeScreenshot("gore-decay-dry");
 
 			// Leave the decals empty for any later scenes.
 			context.runOnClient(mc -> DecalManager.clear());

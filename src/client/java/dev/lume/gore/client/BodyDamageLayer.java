@@ -1,8 +1,10 @@
 package dev.lume.gore.client;
 
+import dev.lume.gore.Drying;
 import dev.lume.gore.GoreStain;
 import java.util.List;
 import net.fabricmc.fabric.api.client.rendering.v1.FabricRenderState;
+import net.minecraft.client.Minecraft;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -70,7 +72,10 @@ public class BodyDamageLayer extends RenderLayer<LivingEntityRenderState, Entity
 			return;
 		}
 
-		float intensity = Math.min(1.0f, stains.size() / SATURATION);
+		long now = Minecraft.getInstance().level != null
+				? Minecraft.getInstance().level.getGameTime()
+				: 0L;
+		float intensity = coatIntensity(stains, now);
 		if (intensity <= 0.0f) {
 			return;
 		}
@@ -97,5 +102,23 @@ public class BodyDamageLayer extends RenderLayer<LivingEntityRenderState, Entity
 		collector.submitModel(model, state, poseStack, renderType, light,
 				OverlayTexture.NO_OVERLAY, tint, null, 0);
 		poseStack.popPose();
+	}
+
+	/**
+	 * Coat intensity from the stains' wetness, not just their count: a fresh
+	 * stain contributes fully ({@code 1 - dryness == 1}), a fully dry stain
+	 * nothing ({@code 1 - dryness == 0}), so an old brown wound stops reading
+	 * as a wet red wash.
+	 *
+	 * @param stains the entity's current stains
+	 * @param now    current game time
+	 * @return {@code 0f} … {@code 1f}
+	 */
+	public static float coatIntensity(List<GoreStain> stains, long now) {
+		float wetnessSum = 0f;
+		for (GoreStain stain : stains) {
+			wetnessSum += 1.0f - Drying.dryness(stain.born(), now, Drying.SCALE);
+		}
+		return Math.min(1.0f, wetnessSum / SATURATION);
 	}
 }

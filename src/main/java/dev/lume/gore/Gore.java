@@ -23,6 +23,12 @@ public class Gore implements ModInitializer {
 
 	public static final SimpleParticleType BLOOD_MIST = FabricParticleTypes.simple();
 	public static final SimpleParticleType BLOOD_DROP = FabricParticleTypes.simple();
+	/**
+	 * An arterial jet: a short-lived emitter that keeps throwing droplets along
+	 * its velocity for a fraction of a second. The server sends one per jet and
+	 * each client simulates the spray it produces.
+	 */
+	public static final SimpleParticleType BLOOD_JET = FabricParticleTypes.simple();
 
 	/** How bloody a piece of gear is, 0..100. Purely cosmetic. */
 	public static final DataComponentType<Integer> BLOOD = Registry.register(
@@ -42,13 +48,18 @@ public class Gore implements ModInitializer {
 	public void onInitialize() {
 		Registry.register(BuiltInRegistries.PARTICLE_TYPE, id("blood_mist"), BLOOD_MIST);
 		Registry.register(BuiltInRegistries.PARTICLE_TYPE, id("blood_drop"), BLOOD_DROP);
+		Registry.register(BuiltInRegistries.PARTICLE_TYPE, id("blood_jet"), BLOOD_JET);
 
 		PayloadTypeRegistry.clientboundPlay().register(GorePayloads.DecalsPayload.TYPE, GorePayloads.DECALS_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(GorePayloads.DecalsSyncPayload.TYPE, GorePayloads.SYNC_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(StainPayloads.AddPayload.TYPE, StainPayloads.ADD_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(StainPayloads.SyncPayload.TYPE, StainPayloads.SYNC_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(GorePayloads.DecalsGonePayload.TYPE, GorePayloads.GONE_CODEC);
 
 		Bleeding.init();
+		BloodTrail.init();
+		StainBinding.init();
+		DecalAging.init();
 
 		// Join replay: both the decal map and the body-stain map for the player's level.
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
@@ -59,11 +70,13 @@ public class Gore implements ModInitializer {
 			Sync.sendTo(player);
 			StainSync.sendTo(player);
 		});
-		// StainStore.clear() drops EVERY level's store at once, so it must only run
-		// when the whole world stops (server stop / return to the title screen).
-		// Calling it on a per-level unload would wipe the stains of every other
-		// dimension that is still running alongside it.
-		ServerLifecycleEvents.SERVER_STOPPED.register(server -> StainStore.clear());
+		// Body stains now live in per-level SavedData, so a world stop must only
+		// drop the in-memory bookkeeping around them.
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			BloodTrail.clear();
+			StainBinding.clear();
+			DecalAging.clear();
+		});
 		ServerTickEvents.END_SERVER_TICK.register(Wash::tick);
 
 		LOGGER.info("Gore initialized.");

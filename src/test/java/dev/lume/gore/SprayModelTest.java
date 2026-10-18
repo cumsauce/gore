@@ -35,7 +35,15 @@ class SprayModelTest {
 	void counts_atMinimumSeverity() {
 		assertEquals(7, SprayModel.dropCount(0.08f));
 		assertEquals(0, SprayModel.mistCount(0.08f));
-		assertEquals(10, SprayModel.mistCount(0.6f));
+		assertEquals(13, SprayModel.mistCount(0.6f));
+	}
+
+	@Test
+	void jets_onlyOpenOnHardHits() {
+		assertEquals(0, SprayModel.jetCount(0.2f), "a light hit must not turn into a fountain");
+		assertEquals(0, SprayModel.jetCount(SprayModel.JET_SEVERITY - 0.01f));
+		assertEquals(1, SprayModel.jetCount(SprayModel.JET_SEVERITY));
+		assertEquals(2, SprayModel.jetCount(1.0f), "a killing blow empties the wound from both ends");
 	}
 
 	@Test

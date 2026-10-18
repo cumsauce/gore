@@ -107,6 +107,30 @@ class BloodAppearanceTest {
 		}
 	}
 
+	@Test
+	void unitDisk_staysInsideAndFillsTheDisk() {
+		double sumRadius = 0.0;
+
+		for (int i = 0; i < 1000; i++) {
+			long seed = BloodAppearance.seedFor(i, i * 5, 3, i % 6, 0.1f * (i % 7), 0.2f, i % 4, i);
+			float[] p = BloodAppearance.unitDisk(seed, 7);
+
+			double radius = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
+			assertTrue(radius <= 1.0 + 1.0e-5, "point outside the disk: " + radius);
+			assertEquals(radius, p[2], 1.0e-5, "radius component must match the point");
+			sumRadius += radius;
+
+			float[] again = BloodAppearance.unitDisk(seed, 7);
+			assertEquals(p[0], again[0], 0f);
+			assertEquals(p[1], again[1], 0f);
+		}
+
+		// sqrt(u) area weighting puts the mean radius at 2/3; sampling u directly
+		// (a centre-biased disk) would sit near 1/2.
+		double mean = sumRadius / 1000.0;
+		assertTrue(mean > 0.58 && mean < 0.72, "mean radius " + mean);
+	}
+
 	private static void assertWithin(int actual, int expected, double band, String channel) {
 		// + 1.0 absorbs the Math.round in tint(): a jittered channel can land
 		// half a unit outside the nominal band before rounding.

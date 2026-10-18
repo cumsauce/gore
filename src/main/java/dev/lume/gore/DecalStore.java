@@ -60,4 +60,14 @@ public class DecalStore extends SavedData {
 	public List<Decal> getAll() {
 		return List.copyOf(decals);
 	}
+
+	/**
+	 * Removes exactly these decals, used by {@link DecalAging} when a stain has
+	 * faded out or been rained off. Dirty only when something was removed.
+	 */
+	public void removeAll(java.util.Collection<Decal> gone) {
+		if (decals.removeAll(gone)) {
+			setDirty();
+		}
+	}
 }

@@ -49,6 +49,19 @@ public final class DecalManager {
 		dimension = null;
 	}
 
+	/**
+	 * Drops decals the server has retired (faded out or rained off). Removal is
+	 * by value: the server names the exact decal, and a decal's fields are its
+	 * identity.
+	 */
+	public static void remove(List<Decal> gone) {
+		if (gone == null || gone.isEmpty()) {
+			return;
+		}
+
+		DECALS.removeAll(gone);
+	}
+
 	public static List<Decal> snapshot() {
 		return new ArrayList<>(DECALS);
 	}

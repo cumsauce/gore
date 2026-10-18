@@ -42,12 +42,12 @@ public class BloodMistParticle extends SingleQuadParticle {
 		this.xd = vx + (this.random.nextDouble() - 0.5) * 0.06;
 		this.yd = vy + (this.random.nextDouble() - 0.5) * 0.06;
 		this.zd = vz + (this.random.nextDouble() - 0.5) * 0.06;
-		// Thin blood mist transmits light, so it reads pink-red rather than dark red.
-		// A bright saturated tint is also the only thing that survives compositing over
-		// stone and sky: a dark red at half opacity is just a grey smudge.
-		this.rCol = 0.85f;
-		this.gCol = 0.055f;
-		this.bCol = 0.045f;
+		// Several puffs overlap, so each is a dark translucent red: a bright
+		// saturated tint with a dozen of them on screen stops reading as blood
+		// and starts reading as a red filter over the camera.
+		this.rCol = 0.5f;
+		this.gCol = 0.035f;
+		this.bCol = 0.03f;
 		this.alpha = ParticleLook.MIST_PEAK_ALPHA;
 	}
 
@@ -70,7 +70,7 @@ public class BloodMistParticle extends SingleQuadParticle {
 		this.yd = v.y;
 		this.zd = v.z;
 		this.move(this.xd, this.yd, this.zd);
-		this.quadSize *= 1.03f; // dispersion
+		this.quadSize *= 1.015f; // dispersion
 		this.alpha = ParticleLook.alphaAt((float) this.age / this.lifetime); // evaporation
 		this.setSpriteFromAge(this.sprites);
 	}

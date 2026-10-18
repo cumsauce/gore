@@ -74,4 +74,74 @@ public final class Drying {
 		int b = Math.round(255.0f * (1.0f - 0.40f * dryness));
 		return ARGB.color(255, r, g, b);
 	}
+
+	/**
+	 * Ticks after the stain is fully dry at which it has faded to nothing,
+	 * multiplied by {@link #SCALE} (20 min at scale 1.0). A dry stain flakes
+	 * off rather than sitting on the wall forever: the budget stops being the
+	 * only thing that clears old blood.
+	 */
+	public static final long FADE_TICKS = 24_000L;
+
+	/**
+	 * How much of a stain is still there, {@code 1f} until it finishes drying,
+	 * then falling linearly to {@code 0f} at {@link #FADE_TICKS} after birth.
+	 * Used as the alpha multiplier, so old blood thins out gradually instead
+	 * of blinking away.
+	 *
+	 * <p>Legacy stains ({@code born == 0}) never fade — their age is unknown.
+	 */
+	public static float fade(long born, long now, double scale) {
+		if (born == 0L) {
+			return 1f;
+		}
+
+		long age = now - born;
+
+		if (age <= 0L) {
+			return 1f;
+		}
+
+		double dryAt = DRY_TICKS * scale;
+		double goneAt = dryAt + FADE_TICKS * scale;
+
+		if (age <= dryAt) {
+			return 1f;
+		}
+
+		if (age >= goneAt) {
+			return 0f;
+		}
+
+		return (float) ((goneAt - age) / (goneAt - dryAt));
+	}
+
+	/**
+	 * Ticks of rain exposure that wash a stain away, multiplied by
+	 * {@link #SCALE} (4 min of rain at scale 1.0). Rain dissolves blood far
+	 * faster than it dries, but only while it is actually raining on the
+	 * stain — the sweep that calls this checks exposure per decal.
+	 */
+	public static final long RAIN_WASH_TICKS = 4_800L;
+
+	/**
+	 * How much of a stain is left after {@code rainTicks} of accumulated rain
+	 * exposure: full until the rain starts to win, then a linear dissolve to
+	 * {@code 0f} at {@link #RAIN_WASH_TICKS}. Returned stains are candidates
+	 * for removal, not fades — rain runs blood off a wall, it does not thin
+	 * it into paint.
+	 */
+	public static float rainLeft(long rainTicks, double scale) {
+		double goneAt = RAIN_WASH_TICKS * scale;
+
+		if (rainTicks <= 0L) {
+			return 1f;
+		}
+
+		if (rainTicks >= goneAt) {
+			return 0f;
+		}
+
+		return (float) (1.0 - rainTicks / goneAt);
+	}
 }

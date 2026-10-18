@@ -10,9 +10,10 @@ Layout (cell i at x=(i%8)*64, y=(i//8)*64), splat tail points UP (-y):
               elongation bands 0-3 -> b/a = [1.0, 0.7, 0.45, 0.25]
               density bands 0-2    -> satellite counts [0, 4, 9]
   cells 12-13 pool blobs (two sizes, no tail)
-  cell 14        drip run strip (full cell height, ~6px wide, dark edges)
-  cell 15        drip leading bead (single blob)
-  cells 16-63 reserved, left fully transparent for later variants
+  cell 14        drip run strip (full height, wide at the top, tapering down)
+  cell 15        drip leading bead (single blob, anchored at the cell top)
+  cells 16-19 four wound lacerations at different tilts and lengths
+  cells 20-63 reserved, left fully transparent for later variants
 
 Every shape is a signed-distance field, not a filled primitive. Each
 pixel's alpha is a smoothstep ramp across the field boundary multiplied
@@ -38,10 +39,12 @@ ART_CELLS = 16  # cells 0-15 carry art; 16-63 stay empty
 BASE = (120, 14, 14, 255)
 DARK = (90, 8, 8, 255)
 EDGE = (150, 24, 20, 255)
-# Wound colours: a dark laceration with raised (slightly lighter) edges.
-WOUND_DARK = (25, 2, 2, 255)
-WOUND_RAISED = (100, 12, 10, 255)
-WOUND_EDGE = (135, 18, 14, 255)
+# Wound colours: a dark cut inside a bright, freshly-torn rim. The rim is the
+# part that has to carry: on a mob already darkened by the blood coat, an
+# all-dark gash disappears into the body.
+WOUND_DARK = (104, 9, 8, 255)
+WOUND_RAISED = (152, 21, 16, 255)
+WOUND_EDGE = (202, 38, 30, 255)
 
 # elongation band -> b/a (semi-minor across tail / semi-major along tail)
 ELONGATION = (1.0, 0.7, 0.45, 0.25)
@@ -67,8 +70,11 @@ BODY_WOBBLE = 0.17  # blob radius wobble amplitude
 POOL_WOBBLE = 0.12
 SAT_WOBBLE = 0.22
 TAIL_SAMPLES = 28  # metaball discs along the tail bezier
-RUN_HALF_W = 3.0  # drip run strip nominal half-width, px
-RUN_WOBBLE = 2.2  # run side wobble amplitude, px
+# A run is a film of blood, not a hairline: it starts wide where the splat fed
+# it and narrows as it descends, because the volume behind it is finite.
+RUN_HALF_W_TOP = 8.5  # run half-width at its top edge, px
+RUN_HALF_W_BOTTOM = 3.6  # run half-width at its bottom edge, px
+RUN_WOBBLE = 2.6  # run side wobble amplitude, px
 
 # --- material --------------------------------------------------------------
 # The palette stays recognisable: RIM is DARK (edge pooling), CORE is BASE
@@ -371,17 +377,24 @@ def draw_pool(buf, cell_x, cell_y, radius, seed):
 
 
 def draw_run(buf, cell_x, cell_y, seed):
-    """Drip run strip: full cell height, wobbly soft-edged sides, dark rim."""
+    """Drip run strip: full cell height, wide at the top and tapering down.
+
+    The strip is submitted with its top pinned at the wound and scaled by the
+    flow fraction, so the taper reads as a film that has already spent most of
+    its volume by the time it reaches the bead below.
+    """
     clip = (cell_x, cell_y, cell_x + CELL - 1, cell_y + CELL - 1)
     cx = cell_x + 31.5
     prims = []
     samples = []
     for y in range(cell_y - 1, cell_y + CELL + 1):
-        # A film of blood: thickness varies along the run and the two sides
-        # wobble independently, so it is never a constant-width bar.
-        half = RUN_HALF_W + 1.1 * value_noise(y / 11.0, 0.5, seed + 11)
+        # A film of blood: width tapers along the run, thickness varies, and the
+        # two sides wobble independently, so it is never a constant-width bar.
+        t = (y - cell_y) / float(CELL)
+        half = RUN_HALF_W_TOP + (RUN_HALF_W_BOTTOM - RUN_HALF_W_TOP) * t
+        half += 1.1 * value_noise(y / 11.0, 0.5, seed + 11)
         wob = RUN_WOBBLE * (value_noise(y / 7.0, 0.5, seed) - 0.5)
-        samples.append(((cx + wob, y + 0.5), half))
+        samples.append(((cx + wob, y + 0.5), max(1.0, half)))
     prims.append((1, samples))
     render_shape(buf, clip, prims, seed)
 
@@ -392,39 +405,47 @@ def draw_bead(buf, cell_x, cell_y, seed):
     makes the bead's top align with the run's bottom (4f) after the
     submitDrip transform, so the circle is never detached from the line."""
     clip = (cell_x, cell_y, cell_x + CELL - 1, cell_y + CELL - 1)
-    bead_cy = cell_y + 8.0
-    prims = [(0, cell_x + 31.5, bead_cy, 9.0, 8.0, seed, BODY_WOBBLE)]
+    bead_cy = cell_y + 10.0
+    prims = [(0, cell_x + 31.5, bead_cy, 11.0, 10.0, seed, BODY_WOBBLE)]
     specs = [
         (
-            cell_x + 31.5 - SPEC_OFFSET * 8.0,
-            bead_cy - SPEC_OFFSET * 4.4,
-            max(SPEC_MIN_R, SPEC_SCALE * 8.0),
+            cell_x + 31.5 - SPEC_OFFSET * 10.0,
+            bead_cy - SPEC_OFFSET * 5.5,
+            max(SPEC_MIN_R, SPEC_SCALE * 10.0),
             1.0,
         )
     ]
     render_shape(buf, clip, prims, seed, specs)
 
 
-def draw_wound(buf, cell_x, cell_y, seed):
+def draw_wound(buf, cell_x, cell_y, seed, tilt_deg=0.0, length=50.0):
     """Wound laceration: a jagged dark cut with raised (lighter) edges.
 
-    Not a splat — a gash. Dark in the centre (the cut itself), raised torn
-    skin on either side, with a little blood pooling at the ends. Variant 16+.
+    Not a splat — a gash: a ragged lens, thick through the middle and tapering
+    to a point at both ends, dark in the centre with torn, lighter tissue at the
+    rim. Cells 16–19 are four such cuts at different tilts and lengths: the
+    client picks one at random per hit, so every wound cell must be drawn or a
+    quarter of all hits would leave no wound at all.
     """
     clip = (cell_x, cell_y, cell_x + CELL, cell_y + CELL)
-    # Jagged cut running roughly horizontally, with vertical jitter.
+    a = math.radians(tilt_deg)
+    dx, dy = math.cos(a), math.sin(a)
+    # A chain of discs along the cut: thick in the middle, sharp at both ends,
+    # wobbling off-axis so the tear is ragged rather than a clean line.
     cut_samples = []
-    edge_top = []
-    edge_bot = []
-    for i in range(10):
-        t = i / 9.0
-        x = cell_x + 6 + t * 52
-        y = cell_y + 32 + (value_noise(t * 4.0, 0.3, seed) - 0.5) * 8
-        w = 2.5 + 1.0 * (1.0 - abs(2.0 * t - 1.0))
-        cut_samples.append(((x, y), w))
-        edge_top.append(((x, y - 5.0), 1.2))
-        edge_bot.append(((x, y + 5.0), 1.2))
-    prims = [(1, cut_samples), (1, edge_top), (1, edge_bot)]
+    steps = 15
+    for i in range(steps):
+        t = i / (steps - 1.0)
+        along = (t - 0.5) * length
+        perp = (value_noise(t * 3.2, 0.7, seed) - 0.5) * 7.0
+        x = cell_x + 32 + dx * along - dy * perp
+        y = cell_y + 32 + dy * along + dx * perp
+        taper = math.sin(math.pi * t) ** 0.65
+        # Long and narrow: a cut, not a lump. The old radius made a lens so
+        # deep that the dark core vanished under the rim and it read as a red
+        # ball glued to the chest.
+        cut_samples.append(((x, y), 0.8 + 7.4 * taper))
+    prims = [(1, cut_samples)]
 
     cx0, cy0, cw, ch = clip
     for yy in range(cy0, cy0 + ch):
@@ -437,13 +458,15 @@ def draw_wound(buf, cell_x, cell_y, seed):
                 xx / THICK_SCALE, yy / THICK_SCALE, seed
             )
             alpha = cov * thick
-            # t=1 at centre (darkest), t=0 at edge (raised).
-            t = min(1.0, max(0.0, -d / RIM_WIDTH))
-            u = _smoothstep(0.0, 0.6, t)
+            # t=1 at centre (darkest), t=0 at edge (raised). The ramp is 2.5 px,
+            # not the 7 px used by a splat: a cut is a thin dark line with a
+            # torn rim, and a wide ramp turns the whole gash into rim colour.
+            t = min(1.0, max(0.0, -d / 2.5))
+            u = _smoothstep(0.0, 0.45, t)
             r = WOUND_EDGE[0] + (WOUND_DARK[0] - WOUND_EDGE[0]) * u
             g = WOUND_EDGE[1] + (WOUND_DARK[1] - WOUND_EDGE[1]) * u
             b = WOUND_EDGE[2] + (WOUND_DARK[2] - WOUND_EDGE[2]) * u
-            k = 0.30 * (1.0 - u)
+            k = 0.22 * (1.0 - u)
             r += (WOUND_RAISED[0] - r) * k
             g += (WOUND_RAISED[1] - g) * k
             b += (WOUND_RAISED[2] - b) * k
@@ -499,8 +522,18 @@ def main():
     draw_run(buf, (14 % GRID) * CELL, (14 // GRID) * CELL, SEED + 300)
     draw_bead(buf, (15 % GRID) * CELL, (15 // GRID) * CELL, SEED + 301)
 
-    # wound: a dark laceration with raised edges (cell 16)
-    draw_wound(buf, (16 % GRID) * CELL, (16 // GRID) * CELL, SEED + 400)
+    # wounds: four lacerations with raised edges (cells 16-19)
+    WOUND_TILTS = (-24.0, -7.0, 9.0, 26.0)
+    for i, tilt in enumerate(WOUND_TILTS):
+        cell = 16 + i
+        draw_wound(
+            buf,
+            (cell % GRID) * CELL,
+            (cell // GRID) * CELL,
+            SEED + 400 + i,
+            tilt_deg=tilt,
+            length=56.0 - 2.0 * i,
+        )
 
     write_png(OUT_PATH, SIZE, SIZE, buf)
     opaque = sum(1 for i in range(3, len(buf), 4) if buf[i])

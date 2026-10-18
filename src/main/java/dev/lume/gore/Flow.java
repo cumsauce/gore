@@ -25,6 +25,18 @@ public final class Flow {
 	public static final float BREAK_OFF = 0.6f;
 	/** Fraction of width lost when the run is fully stretched. */
 	public static final float THIN = 0.35f;
+	/** Age, in ticks (2 s), at which a fresh pool has finished spreading. */
+	public static final int SPREAD_TICKS = 40;
+	/** Viscous spreading time constant, in ticks: fast at first, then it creeps. */
+	private static final double SPREAD_TAU = 9.0;
+	/**
+	 * A body run is driven by a wound that keeps feeding it, so it travels
+	 * this many times faster than a wall run fed by one splat.
+	 */
+	public static final int BODY_SPEED = 2;
+
+	/** Fraction of its final size a pool has at birth; see {@link #spread}. */
+	public static final float POOL_NASCENT = 0.45f;
 
 	private Flow() {
 	}
@@ -44,6 +56,39 @@ public final class Flow {
 		}
 
 		return (float) (f(ageTicks) / f(T_TICKS));
+	}
+
+	/**
+	 * How far a pool has spread into its final footprint, 0 at birth to 1 once
+	 * it has settled.
+	 *
+	 * <p>A pool is not a sticker that appears at full size: the blood lands as a
+	 * narrow column and then floods outward under its own weight, quickly at
+	 * first and then ever more slowly as viscosity balances gravity. Integrated
+	 * here as {@code 1 − e^{−t/τ}} normalised over {@link #SPREAD_TICKS}, which
+	 * gives the decelerating edge a spreading liquid has. A pool with no birth
+	 * stamp ({@code born == 0}, saved by an older version) counts as settled.
+	 */
+	public static float spread(long ageTicks) {
+		if (ageTicks >= SPREAD_TICKS) {
+			return 1.0f;
+		}
+
+		if (ageTicks <= 0L) {
+			return 0.0f;
+		}
+
+		double full = 1.0 - Math.exp(-SPREAD_TICKS / SPREAD_TAU);
+		return (float) ((1.0 - Math.exp(-ageTicks / SPREAD_TAU)) / full);
+	}
+
+	/**
+	 * The on-screen size of a pool of final size {@code size} at
+	 * {@code ageTicks}: from {@link #POOL_NASCENT} of {@code size} at birth up to
+	 * {@code size} once {@link #spread} completes.
+	 */
+	public static float poolSize(float size, long ageTicks) {
+		return size * (POOL_NASCENT + (1.0f - POOL_NASCENT) * spread(ageTicks));
 	}
 
 	/**

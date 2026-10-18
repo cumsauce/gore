@@ -82,6 +82,21 @@ public final class BloodAppearance {
 		return (1.0f - dryness) * (0.5f + 0.5f * unit01(seed, 4));
 	}
 
+	/**
+	 * A stable point of the unit disk for one stain: {@code {cos θ·r, sin θ·r, r}}
+	 * with {@code θ} uniform over the circle and {@code r = √u} so points are
+	 * spread evenly over the area rather than crowded at the centre.
+	 *
+	 * <p>Used to scatter body spatter around the wound it came from. A pure
+	 * function of the stain's own identity, so the point never drifts between
+	 * frames and does not depend on how many other stains the body has.
+	 */
+	public static float[] unitDisk(long seed, int salt) {
+		float angle = unit01(seed, salt) * (float) (Math.PI * 2.0);
+		float radius = (float) Math.sqrt(unit01(seed, salt + 1));
+		return new float[] {(float) Math.cos(angle) * radius, (float) Math.sin(angle) * radius, radius};
+	}
+
 	/** SplitMix64-style avalanche step, so adjacent stains hash far apart. */
 	private static long mix(long h, long v) {
 		long z = h + v * 0x9E3779B97F4A7C15L;

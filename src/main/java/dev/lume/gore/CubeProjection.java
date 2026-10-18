@@ -47,8 +47,18 @@ public final class CubeProjection {
 		}
 	}
 
-	/** A face centre, its outward normal, and the box it belongs to, all in one frame. */
-	public record Result(float[] point, float[] normal, String partName) {
+	/**
+	 * A face centre, its outward normal, and the box it belongs to, all in one
+	 * frame. The box is what lets the caller keep a stain on the face — a quad
+	 * wider than the face, centred too far off it, or a drip run longer than the
+	 * distance to the face's bottom edge, all hang over the silhouette and read
+	 * as blood floating beside the body.
+	 */
+	public record Result(float[] point, float[] normal, Box box) {
+		/** The name of the model part the face belongs to. */
+		public String partName() {
+			return box.name();
+		}
 	}
 
 	/** Outward normals of the six faces, in the order {@link #faceCentre} expects. */
@@ -113,7 +123,7 @@ public final class CubeProjection {
 						|| (facing >= bestFacing - 1.0E-5F && depth > bestDepth)) {
 					bestFacing = facing;
 					bestDepth = depth;
-					best = new Result(centre, normal.clone(), box.name());
+					best = new Result(centre, normal.clone(), box);
 				}
 			}
 		}
@@ -134,5 +144,18 @@ public final class CubeProjection {
 			case 4 -> new float[] {cx, cy, box.maxZ()};
 			default -> new float[] {cx, cy, box.minZ()};
 		};
+	}
+
+	/**
+	 * Half the box's extent along an axis-aligned direction, in the box's own
+	 * frame: the box reaches this far from its centre in {@code dir}. Used to
+	 * keep a stain (and the run it drips) inside the face it was placed on.
+	 */
+	public static float extentAlong(Box box, float dirX, float dirY, float dirZ) {
+		float hx = (box.maxX() - box.minX()) * 0.5F;
+		float hy = (box.maxY() - box.minY()) * 0.5F;
+		float hz = (box.maxZ() - box.minZ()) * 0.5F;
+
+		return hx * Math.abs(dirX) + hy * Math.abs(dirY) + hz * Math.abs(dirZ);
 	}
 }

@@ -49,6 +49,7 @@ public class GoreClient implements ClientModInitializer {
 		ParticleProviderRegistry registry = ParticleProviderRegistry.getInstance();
 		registry.register(Gore.BLOOD_MIST, BloodMistParticle.Provider::new);
 		registry.register(Gore.BLOOD_DROP, BloodDropParticle.Provider::new);
+		registry.register(Gore.BLOOD_JET, BloodJetParticle.Provider::new);
 
 		ClientLifecycleEvents.CLIENT_STARTED.register(client ->
 				client.getTextureManager().registerAndLoad(BLOOD_ATLAS, new SimpleTexture(BLOOD_ATLAS)));
@@ -57,6 +58,8 @@ public class GoreClient implements ClientModInitializer {
 				context.client().execute(() -> DecalManager.addDecals(payload.decals())));
 		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsSyncPayload.TYPE, (payload, context) ->
 				context.client().execute(() -> DecalManager.sync(payload.dimension(), payload.decals())));
+		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsGonePayload.TYPE, (payload, context) ->
+				context.client().execute(() -> DecalManager.remove(payload.decals())));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
 			DecalManager.clear();
 			DecalRenderer.clearDrips();
@@ -98,7 +101,12 @@ public class GoreClient implements ClientModInitializer {
 		// this at the tail of LevelExtractor.extract.
 		LevelExtractionEvents.END_EXTRACTION.register(GoreClient::extractStains);
 
-		LevelRenderEvents.AFTER_TRANSLUCENT_TERRAIN.register(DecalRenderer::render);
+		// COLLECT_SUBMITS fires at the tail of LevelRenderer.submitFeatures, the
+		// point where this frame's geometry is baked. Decals submitted from a
+		// draw event instead (AFTER_TRANSLUCENT_TERRAIN) are a frame late, so
+		// they crawl across the world as the camera moves and are missing
+		// entirely on frames that skip that draw call.
+		LevelRenderEvents.COLLECT_SUBMITS.register(DecalRenderer::render);
 		ExtractItemDecorationsCallback.EVENT.register(BloodItemDecorations::extract);
 
 		Gore.LOGGER.info("Gore client initialized.");
@@ -135,7 +143,6 @@ public class GoreClient implements ClientModInitializer {
 
 		TickRateManager tickRate = level.tickRateManager();
 		Map<StateKey, List<GoreStain>> byKey = null;
-		Map<StateKey, Long> byKeyTick = null;
 
 		for (int entityId : STAINED_ENTITIES) {
 			Entity entity = level.getEntity(entityId);
@@ -158,7 +165,6 @@ public class GoreClient implements ClientModInitializer {
 
 			if (byKey == null) {
 				byKey = new HashMap<>();
-				byKeyTick = new HashMap<>();
 			}
 
 			StateKey key = new StateKey(
@@ -167,7 +173,6 @@ public class GoreClient implements ClientModInitializer {
 					Mth.lerp(partialTick, entity.zOld, entity.getZ()),
 					entity.getType());
 			byKey.put(key, stains);
-			byKeyTick.put(key, StainManager.receivedTick(entityId));
 		}
 
 		if (byKey == null) {
@@ -181,10 +186,6 @@ public class GoreClient implements ClientModInitializer {
 				// Fabric injects FabricRenderState into EntityRenderState at
 				// runtime; the cast is the standard bridge, no Mixin of ours.
 				((FabricRenderState) state).setData(StainStateKeys.STAINS, stains);
-				Long tick = byKeyTick.get(new StateKey(state.x, state.y, state.z, state.entityType));
-				if (tick != null) {
-					((FabricRenderState) state).setData(StainStateKeys.RECEIVED_TICK, tick);
-				}
 			}
 		}
 	}

@@ -23,6 +23,8 @@ public final class SprayModel {
 	public static final float MIST_SPREAD = 0.30f;
 	/** Severity at or above which a hit throws a visible mist. */
 	public static final float MIST_SEVERITY = 0.35f;
+	/** Severity at or above which the wound pumps a jet for several ticks. */
+	public static final float JET_SEVERITY = 0.45f;
 
 	/** Log-normal parameters for droplet radius: a few mm drops, many sub-mm. */
 	public static final double DROP_RADIUS_MEDIAN_M = 0.8e-3;
@@ -43,7 +45,21 @@ public final class SprayModel {
 
 	/** Number of mist droplets; light hits below {@link #MIST_SEVERITY} throw none. */
 	public static int mistCount(float severity) {
-		return severity < MIST_SEVERITY ? 0 : Math.round(4 + 10 * severity);
+		return severity < MIST_SEVERITY ? 0 : Math.round(6 + 12 * severity);
+	}
+
+	/**
+	 * Number of arterial jets a hit opens; light hits below {@link #JET_SEVERITY}
+	 * throw none. A jet is not a droplet: it keeps pumping for a fraction of a
+	 * second, which is what makes a hard hit look like a wound under pressure
+	 * rather than a single puff of spray.
+	 */
+	public static int jetCount(float severity) {
+		if (severity < JET_SEVERITY) {
+			return 0;
+		}
+
+		return severity >= 0.8f ? 2 : 1;
 	}
 
 	/**

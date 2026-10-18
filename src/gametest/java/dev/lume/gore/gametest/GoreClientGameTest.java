@@ -289,6 +289,102 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.waitTicks(130);
 			context.takeScreenshot("gore-dry-dry");
 
+			// Task 7: pooling. A pool is born small and floods outward over two
+			// seconds (Flow.poolSize). The floor block in front of the player is
+			// bare, so the pool is the only blood in frame; the tick-3 shot and
+			// the tick-45 shot must differ in size, with the bbox growing around
+			// a fixed centre (tools/pixelstat.py).
+			// The spray-scene cow is still standing between the player and the
+			// floor, so move it out of frame first.
+			singleplayer.getServer().runCommand(
+					"tp @e[type=minecraft:cow,limit=1] " + (fx + 0.5) + " " + fy + " " + (fz + 200));
+			context.waitTicks(5);
+			Vec3 poolPoint = new Vec3(fx + 0.5, fy, fz - 2);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, poolPoint));
+			context.waitTicks(5);
+
+			context.runOnClient(mc -> {
+				DecalManager.clear();
+				DecalRenderer.clearDrips();
+				DecalManager.addDecals(List.of(new Decal(fx, fy - 1, fz - 2,
+						Direction.UP.get3DDataValue(), 0f, 0f, 0.8f, 0f, 13, mc.level.getGameTime())));
+			});
+			context.waitTicks(3);
+			context.takeScreenshot("gore-pool-03");
+			context.waitTicks(42);
+			context.takeScreenshot("gore-pool-45");
+
+			// Task 8: a mob that has taken several hits. The coat darkens with
+			// every wound and the gash and its spatter sit on the body face, so
+			// three hits must read as a bloody animal rather than three red
+			// specks. The cow is brought a block closer to fill the frame.
+			context.runOnClient(mc -> DecalManager.clear());
+			singleplayer.getServer().runCommand("kill @e[type=minecraft:cow]");
+			context.waitTicks(5);
+
+			BlockPos close = new BlockPos(fx, fy, fz - 2);
+			singleplayer.getServer().runCommand(
+					"summon minecraft:cow " + (fx + 0.5) + " " + fy + " " + (fz - 1.6) + " "
+							+ "{NoAI:1b,PersistenceRequired:1b,Silent:1b,Invulnerable:0b,Health:200f,"
+							+ "attributes:[{id:\"minecraft:max_health\",base:200d}]}");
+			context.waitTicks(10);
+			Vec3 chestPoint = new Vec3(fx + 0.5, fy + 0.9, fz - 1.6);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, chestPoint));
+			context.waitTicks(5);
+
+			// Space the hits past the 10-tick hurt-immunity window: three hits
+			// closer together are two hits, and the scene is about a body that
+			// has taken several.
+			for (int hit = 0; hit < 3; hit++) {
+				singleplayer.getServer().runCommand(
+						"damage @e[type=minecraft:cow,limit=1] 55 minecraft:player_attack by @p");
+				context.waitTicks(13);
+			}
+
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, chestPoint));
+			context.waitTicks(20);
+			context.takeScreenshot("gore-body-close");
+
+			// Task 8b: a humanoid, where the torso face is actually visible. A
+			// cow's body box is mostly hidden behind its own head and front legs,
+			// so the wound and its drip can only be seen through the gap between
+			// them; a husk shows the whole chest.
+			singleplayer.getServer().runCommand("kill @e[type=minecraft:cow]");
+			context.waitTicks(5);
+			singleplayer.getServer().runCommand(
+					"summon minecraft:husk " + (fx + 0.5) + " " + fy + " " + (fz - 2.5) + " "
+							+ "{NoAI:1b,PersistenceRequired:1b,Silent:1b,Health:200f,"
+							+ "attributes:[{id:\"minecraft:max_health\",base:200d}]}");
+			context.waitTicks(10);
+			Vec3 huskChest = new Vec3(fx + 0.5, fy + 1.0, fz - 2.5);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, huskChest));
+			context.waitTicks(5);
+
+			for (int hit = 0; hit < 2; hit++) {
+				singleplayer.getServer().runCommand(
+						"damage @e[type=minecraft:husk,limit=1] 60 minecraft:player_attack by @p");
+				context.waitTicks(13);
+			}
+
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, huskChest));
+			context.waitTicks(20);
+			context.takeScreenshot("gore-body-humanoid");
+
+			// Bodies dry on the same clock as walls (-Dgore.dryScale=0.02 in the
+			// game-test JVM): the gash browns within seconds of the hit.
+			context.waitTicks(130);
+			context.takeScreenshot("gore-body-humanoid-dry");
+
+			// Task 9: the killing blow. The body lets go all at once: a pool
+			// spreads under it, spatter lands around it and jets empty the wound.
+			// Shot early, while the burst is still in the air, then again after
+			// the pool has finished spreading.
+			singleplayer.getServer().runCommand("kill @e[type=minecraft:cow,limit=1]");
+			context.waitTicks(3);
+			context.takeScreenshot("gore-death");
+			context.waitTicks(45);
+			context.takeScreenshot("gore-death-settled");
+
 			// Leave the decals empty for any later scenes.
 			context.runOnClient(mc -> DecalManager.clear());
 		}

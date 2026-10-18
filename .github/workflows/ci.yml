@@ -48,16 +48,21 @@ jobs:
           unzip -l "$jar" | tee contents
           entries="fabric.mod.json
             assets/gore/particles/blood_mist.json assets/gore/particles/blood_drop.json
+            assets/gore/particles/blood_jet.json
             assets/gore/textures/particle/blood_mist_0.png assets/gore/textures/particle/blood_mist_1.png
             assets/gore/textures/particle/blood_mist_2.png assets/gore/textures/particle/blood_drop_0.png
-            assets/gore/textures/particle/blood_drop_1.png assets/gore/textures/decal/blood_atlas.png
+            assets/gore/textures/particle/blood_drop_1.png assets/gore/textures/particle/blood_drop_2.png
+            assets/gore/textures/decal/blood_atlas.png
             assets/gore/icon.png
             dev/lume/gore/Gore.class dev/lume/gore/Bleeding.class dev/lume/gore/Decal.class
             dev/lume/gore/DecalStore.class dev/lume/gore/GorePayloads.class
-            dev/lume/gore/Sync.class dev/lume/gore/Wash.class
+            dev/lume/gore/Sync.class dev/lume/gore/Wash.class dev/lume/gore/BloodTrail.class
+            dev/lume/gore/StainBinding.class dev/lume/gore/DecalAging.class dev/lume/gore/StainStore.class
             dev/lume/gore/client/GoreClient.class dev/lume/gore/client/DecalManager.class
             dev/lume/gore/client/DecalRenderer.class dev/lume/gore/client/BloodMistParticle.class
-            dev/lume/gore/client/BloodDropParticle.class dev/lume/gore/client/BloodItemDecorations.class"
+            dev/lume/gore/client/BloodDropParticle.class dev/lume/gore/client/BloodJetParticle.class
+            dev/lume/gore/client/BodyDamageLayer.class dev/lume/gore/client/BodyStainLayer.class
+            dev/lume/gore/client/BloodItemDecorations.class"
           for entry in $entries; do
             grep -q " $entry\$" contents || { echo "$jar has no $entry" >&2; exit 1; }
           done

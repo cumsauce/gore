@@ -29,11 +29,15 @@ public final class ParticleLook {
 	 */
 	public static final int MIST_LIFETIME_FLOOR = 40;
 
-	/** Peak opacity of a mist puff at the moment it is thrown. */
-	public static final float MIST_PEAK_ALPHA = 1.0f;
+	/**
+	 * Peak opacity of a mist puff at the moment it is thrown. Mist is a
+	 * translucent cloud, not a red disc: several puffs overlap to build the
+	 * density, so each one stays well under opaque on its own.
+	 */
+	public static final float MIST_PEAK_ALPHA = 0.5f;
 
 	/** Evaporation rate: {@code alpha = MIST_PEAK_ALPHA * exp(-MIST_FADE * age/lifetime)}. */
-	public static final float MIST_FADE = 2.0f;
+	public static final float MIST_FADE = 1.2f;
 
 	/**
 	 * Speed in blocks/tick below which a droplet keeps its round silhouette. A drop
@@ -87,7 +91,11 @@ public final class ParticleLook {
 	 */
 	public static float quadFor(float radiusM) {
 		float t = clamp01((radiusM - MIN_MIST_RADIUS_M) / (MAX_MIST_RADIUS_M - MIN_MIST_RADIUS_M));
-		return 0.20f + 0.22f * t;
+		// A puff starts small and is grown by dispersion each tick
+		// (BloodMistParticle), so its *birth* size stays well under a block:
+		// a hit throws a dozen overlapping puffs, and a half-block quad each
+		// turns the whole frame into a red screen wash.
+		return 0.10f + 0.10f * t;
 	}
 
 	/**

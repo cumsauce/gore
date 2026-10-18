@@ -26,15 +26,23 @@ import net.minecraft.world.phys.Vec3;
 /**
  * Server side: turns a damage event into bleeding. Light hits drip a few drops,
  * heavy hits gush mist and eject splatters that stick to nearby block faces.
+ *
+ * <p>Blood is placed in four ways, in order of how far it travels: an arterial
+ * jet that keeps pumping from the wound for a few ticks, the immediate spray,
+ * the wall and floor decals that spray leaves behind, and the body stains on the
+ * victim itself (see {@link StainWounds}). Floor hits become pools that spread
+ * as they age, so a fight progressively soaks the ground around it.
  */
 public final class Bleeding {
 	private static final float SPLATTER_SEVERITY = 0.22f;
-	private static final int MAX_DECALS_PER_HIT = 12;
+	private static final int MAX_DECALS_PER_HIT = 18;
 	/** Half-angle of the impact cone, in the tangent the jitter is measured in. */
 	private static final float SPRAY_SPREAD = 0.6f;
 	/** A heavy hit leaves a run of blood that will later crawl down the wall. */
-	private static final float DRIP_SEVERITY = 0.55f;
-	private static final float DRIP_CHANCE = 0.5f;
+	private static final float DRIP_SEVERITY = 0.45f;
+	private static final float DRIP_CHANCE = 0.55f;
+	/** Severity at or above which a hit also tries to pool blood at the feet. */
+	private static final float POOL_SEVERITY = 0.25f;
 
 	/**
 	 * Counts hits while {@code gore.seed} is set, so a seeded session can replay
@@ -68,6 +76,7 @@ public final class Bleeding {
 
 	public static void init() {
 		ServerLivingEntityEvents.AFTER_DAMAGE.register(Bleeding::afterDamage);
+		ServerLivingEntityEvents.AFTER_DEATH.register(Bleeding::afterDeath);
 	}
 
 	private static void afterDamage(LivingEntity victim, DamageSource source, float baseDamage, float damageTaken, boolean blocked) {
@@ -82,8 +91,14 @@ public final class Bleeding {
 		RandomSource random = hitRandom(victim);
 		float severity = Mth.clamp(damageTaken / Math.max(4.0f, victim.getMaxHealth()), 0.08f, 1.0f);
 		Vec3 impactDir = impactDirection(victim, source);
-		Vec3 wound = new Vec3(victim.getX(), victim.getY() + victim.getBbHeight() * 0.62, victim.getZ())
-				.add(impactDir.scale(0.25));
+		Vec3 hit = hitPoint(victim, source, impactDir);
+		Vec3 bodyHit = hit == null ? null : inBodyFrame(hit, victim.getYRot());
+		// With a real hit point the wound is exactly where the blow landed;
+		// the old 62%-of-height guess is only the fallback now.
+		Vec3 wound = hit != null
+				? victim.position().add(hit)
+				: new Vec3(victim.getX(), victim.getY() + victim.getBbHeight() * 0.62, victim.getZ())
+						.add(impactDir.scale(0.25));
 
 		spawnParticles(level, wound, impactDir, severity, random);
 
@@ -99,19 +114,189 @@ public final class Bleeding {
 				stored.add(store.addOrMerge(decal));
 			}
 
-			GorePayloads.DecalsPayload payload = new GorePayloads.DecalsPayload(List.copyOf(stored));
-			for (ServerPlayer player : PlayerLookup.around(level, wound, 96.0)) {
-				ServerPlayNetworking.send(player, payload);
-			}
+			storedDecals(level, wound, stored);
 		}
 
 		markGear(victim, source, severity, random);
 
-		// Body stain for the hit itself: same clamped severity and impact direction
-		// the particles and decals already used, then tell the watching clients.
-		GoreStain stain = StainWounds.create(source, impactDir, severity, random);
-		StainStore.of(level).add(victim.getId(), stain);
+		// Body stains for the hit itself: the gash plus the spatter the blow threw,
+		// using the same clamped severity and impact direction the particles and
+		// decals already used. Then tell the watching clients.
+		StainStore store = StainStore.of(level);
+		for (GoreStain stain : StainWounds.create(source, impactDir, severity, bodyHit, level.getGameTime(), random)) {
+			store.add(victim, stain);
+		}
 		StainSync.sendAdd(level, victim);
+	}
+
+	/**
+	 * Rotates a world-space offset into the victim's body frame, the frame the
+	 * client undoes with the entity's current body rotation. Storing it in the
+	 * body frame is what keeps a wound on the same side of a creature when it
+	 * turns: a world-space offset would stay pointing the same compass way while
+	 * the body walked away from it.
+	 */
+	private static Vec3 inBodyFrame(Vec3 offset, float yRot) {
+		org.joml.Vector3f v = new org.joml.Vector3f((float) offset.x, (float) offset.y, (float) offset.z)
+				.rotateY((float) Math.toRadians(yRot - 180.0f));
+		return new Vec3(v.x, v.y, v.z);
+	}
+
+	/**
+	 * Where the blow actually landed, as an offset from the victim's position
+	 * (world axes, blocks), or {@code null} when nothing better than the old
+	 * inference is known.
+	 *
+	 * <p>Minecraft's damage event reports no hit point, but it names the
+	 * entities involved, and that is enough to reconstruct one: a projectile
+	 * knows exactly where it struck (it is still at the impact), a melee
+	 * attacker was looking at the victim from its own eye height, and a
+	 * positioned source (cactus, campfire) is itself the origin. Each is cast
+	 * at the victim's bounding box; the first cast that lands wins. The
+	 * fallback of nothing found returns null, and the stains then carry a zero
+	 * hit point the client resolves by inference, as it always did.
+	 */
+	private static Vec3 hitPoint(LivingEntity victim, DamageSource source, Vec3 impactDir) {
+		Entity direct = source.getDirectEntity();
+		Entity attacker = source.getEntity();
+
+		Vec3 from = null;
+
+		if (direct != null && direct != victim && direct != attacker) {
+			// A projectile that is still alive sits at the impact; one that
+			// already broke (arrow stuck in) still carries its last position.
+			from = direct.position();
+		} else if (attacker != null && attacker != victim) {
+			Vec3 eye = attacker.getEyePosition();
+			Vec3 look = attacker.getViewVector(1.0f);
+
+			// Only trust the attacker's gaze when it is pointed at the victim —
+			// sweeping a sword while running away should not put wounds where
+			// the attacker happens to be staring.
+			if (victim.getBoundingBox().clip(eye, eye.add(look.scale(6.0))).isPresent()) {
+				from = eye;
+			}
+		}
+
+		if (from == null) {
+			Vec3 sourcePos = source.getSourcePosition();
+
+			if (sourcePos != null && victim.getBoundingBox().inflate(1.0).contains(sourcePos)) {
+				// A source position inside or beside the body: contact damage
+				// (cactus, sweet berry bush) struck right where it stands.
+				from = sourcePos;
+			}
+		}
+
+		if (from == null) {
+			return null;
+		}
+
+		// Cast from the origin toward the body along the line to the victim's
+		// centre; the entry point of that ray is where the blow met the skin.
+		Vec3 center = victim.position().add(0.0, victim.getBbHeight() * 0.5, 0.0);
+		Vec3 toCenter = center.subtract(from);
+
+		if (toCenter.lengthSqr() < 1.0e-6) {
+			return null;
+		}
+
+		return victim.getBoundingBox().clip(from, from.add(toCenter.normalize().scale(4.0)))
+				.map(hit -> hit.subtract(victim.position()))
+				.orElse(null);
+	}
+
+	/**
+	 * The killing blow: the body lets go of everything at once. A large pool
+	 * spreads under the corpse, a ring of spatter lands around it, the mist
+	 * billows and a couple of jets empty the last of the wound.
+	 *
+	 * <p>This is the one event where it is safe to be generous: it happens once
+	 * per creature, and it is the image the player remembers.
+	 */
+	private static void afterDeath(LivingEntity victim, DamageSource source) {
+		if (victim instanceof ArmorStand) {
+			return;
+		}
+
+		if (!(victim.level() instanceof ServerLevel level)) {
+			return;
+		}
+
+		RandomSource random = victim.getRandom();
+		Vec3 feet = victim.position();
+		long now = level.getGameTime();
+
+		// The corpse's own pool: a direct probe straight down, wider than the
+		// splatter probe and independent of which way the killing blow pointed.
+		BlockHitResult ground = level.clip(new ClipContext(
+				feet.add(0.0, 0.1, 0.0), feet.add(0.0, -2.5, 0.0),
+				ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, victim));
+
+		if (ground.getType() == HitResult.Type.BLOCK && ground.getDirection() == Direction.UP) {
+			DecalStore store = level.getDataStorage().computeIfAbsent(DecalStore.TYPE);
+			Vec3 rel = ground.getLocation().subtract(Vec3.atCenterOf(ground.getBlockPos()));
+			float poolSize = 0.95f + random.nextFloat() * 0.35f;
+			float limit = Math.max(0.0f, 0.5f - poolSize * 0.5f);
+			Decal pool = new Decal(ground.getBlockPos().getX(), ground.getBlockPos().getY(), ground.getBlockPos().getZ(),
+					Direction.UP.get3DDataValue(),
+					(float) Mth.clamp(rel.dot(Decal.axis1(Direction.UP)), -limit, limit),
+					(float) Mth.clamp(rel.dot(Decal.axis2(Direction.UP)), -limit, limit),
+					poolSize, random.nextFloat() * 360.0f, 13, now);
+			storedDecals(level, ground.getLocation(), List.of(store.addOrMerge(pool)));
+		}
+
+		// The last spatter, thrown outward and down from the body. Reusing the
+		// normal cone machinery means every landing face gets the right treatment:
+		// walls get tails and drips, floors get spreading pools.
+		Vec3 burst = new Vec3(feet.x, feet.y + victim.getBbHeight() * 0.45, feet.z);
+		List<Decal> placed = collectDecals(level, victim, burst, new Vec3(0.0, -1.0, 0.0), 1.0f, random);
+
+		if (!placed.isEmpty()) {
+			DecalStore store = level.getDataStorage().computeIfAbsent(DecalStore.TYPE);
+			List<Decal> stored = new ArrayList<>(placed.size());
+			for (Decal decal : placed) {
+				stored.add(store.addOrMerge(decal));
+			}
+			storedDecals(level, burst, stored);
+		}
+
+		// A full burst of droplets and a pair of jets in opposite directions, so
+		// the death reads from any side the player happens to be watching from.
+		spawnParticles(level, burst, new Vec3(0.0, -0.35, 0.0), 1.0f, random);
+
+		for (int i = 0; i < 2; i++) {
+			double angle = random.nextDouble() * Math.PI * 2.0;
+			Vec3 dir = new Vec3(Math.cos(angle), 0.25 + random.nextDouble() * 0.35, Math.sin(angle)).normalize();
+			level.sendParticles(Gore.BLOOD_JET, burst.x, burst.y, burst.z, 0,
+					dir.x * 0.5, dir.y * 0.5, dir.z * 0.5, 1.0);
+		}
+
+		// The entity is gone: its stains have no body left to render on, and its
+		// trail bookkeeping would leak.
+		StainStore store = StainStore.of(level);
+		boolean wasStained = !store.get(victim.getUUID()).isEmpty();
+		store.remove(victim.getUUID());
+		BloodTrail.forget(level, victim.getUUID());
+
+		// A dead player's client still renders the body for a moment, and a
+		// respawn reuses the id, so explicitly clear the client-side list. Only
+		// worth a packet if the creature was actually bloody.
+		if (wasStained) {
+			StainSync.sendRemove(level, victim.getId());
+		}
+	}
+
+	/** Sends a batch of stored decals to everyone who can see this level's blood. */
+	private static void storedDecals(ServerLevel level, Vec3 around, List<Decal> decals) {
+		if (decals.isEmpty()) {
+			return;
+		}
+
+		GorePayloads.DecalsPayload payload = new GorePayloads.DecalsPayload(List.copyOf(decals));
+		for (ServerPlayer player : PlayerLookup.around(level, around, 96.0)) {
+			ServerPlayNetworking.send(player, payload);
+		}
 	}
 
 	private static Vec3 impactDirection(LivingEntity victim, DamageSource source) {
@@ -170,13 +355,24 @@ public final class Bleeding {
 		for (Vec3 mist : SprayModel.mistVelocities(dir, severity, random)) {
 			level.sendParticles(Gore.BLOOD_MIST, mistOrigin.x, mistOrigin.y, mistOrigin.z, 0, mist.x, mist.y, mist.z, 1.0);
 		}
+
+		// Arterial jets: a few emitters that keep throwing droplets for a fraction
+		// of a second after the hit. They start a little outside the body so the
+		// stream does not spawn inside the mob's own model.
+		Vec3 jetOrigin = wound.add(dir.scale(0.35));
+		for (int i = 0; i < SprayModel.jetCount(severity); i++) {
+			Vec3 jetDir = SprayModel.coneDirection(dir, random, SPRAY_SPREAD * 0.5f);
+			double speed = 0.35 + 0.25 * severity;
+			level.sendParticles(Gore.BLOOD_JET, jetOrigin.x, jetOrigin.y, jetOrigin.z, 0,
+					jetDir.x * speed, jetDir.y * speed, jetDir.z * speed, 1.0);
+		}
 	}
 
 	private static List<Decal> collectDecals(ServerLevel level, LivingEntity victim, Vec3 wound, Vec3 dir, float severity, RandomSource random) {
 		List<Decal> placed = new ArrayList<>();
 
 		if (severity >= SPLATTER_SEVERITY) {
-			int rays = 3 + Math.round(severity * 12.0f);
+			int rays = 4 + Math.round(severity * 16.0f);
 
 			for (int i = 0; i < rays && placed.size() < MAX_DECALS_PER_HIT; i++) {
 				Vec3 rayDir = SprayModel.coneDirection(dir, random, SPRAY_SPREAD);
@@ -206,13 +402,18 @@ public final class Bleeding {
 			}
 		}
 
-		if (severity >= 0.45f && random.nextFloat() < 0.55f && placed.size() < MAX_DECALS_PER_HIT) {
+		// Blood that runs off the body and reaches the floor pools there. This is
+		// separate from the ray spatter: the rays fly outward, and on a flat floor
+		// they leave small marks in a ring, while this is the puddle directly
+		// under the wound.
+		if (severity >= POOL_SEVERITY && random.nextFloat() < 0.6f && placed.size() < MAX_DECALS_PER_HIT) {
 			Vec3 from = new Vec3(wound.x, wound.y - 0.2, wound.z);
 			Vec3 to = from.add(0.0, -2.5, 0.0);
 			BlockHitResult hit = level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, victim));
 
 			if (hit.getType() == HitResult.Type.BLOCK && hit.getDirection() == Direction.UP) {
-				Decal pool = poolDecal(hit, severity, level.getGameTime(), random);
+				float poolSize = Mth.clamp(0.45f + 0.35f * severity + random.nextFloat() * 0.15f, 0.4f, 0.9f);
+				Decal pool = poolDecal(hit, poolSize, level.getGameTime(), random);
 
 				if (pool != null) {
 					placed.add(pool);
@@ -229,6 +430,15 @@ public final class Bleeding {
 
 		if (face == null) {
 			return null;
+		}
+
+		// A flat floor does not take an elongated impact stain: the droplet
+		// flattens and creeps outward under gravity. Floor hits become pools that
+		// spread as they age (see DecalRenderer), which is what makes a fight
+		// look like it is soaking into the ground.
+		if (face == Direction.UP) {
+			float poolSize = Mth.clamp(0.28f + severity * 0.22f + random.nextFloat() * 0.12f, 0.22f, 0.6f);
+			return poolDecal(hit, poolSize, born, random);
 		}
 
 		Vec3 normal = new Vec3(face.getStepX(), face.getStepY(), face.getStepZ());
@@ -264,7 +474,7 @@ public final class Bleeding {
 		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(), u, v, size, rot, variant, born);
 	}
 
-	private static Decal poolDecal(BlockHitResult hit, float severity, long born, RandomSource random) {
+	private static Decal poolDecal(BlockHitResult hit, float poolSize, long born, RandomSource random) {
 		BlockPos pos = hit.getBlockPos();
 		Direction face = hit.getDirection();
 
@@ -273,7 +483,6 @@ public final class Bleeding {
 		}
 
 		Vec3 rel = hit.getLocation().subtract(Vec3.atCenterOf(pos));
-		float poolSize = 0.5f + 0.3f * severity;
 		float poolLimit = Math.max(0.0f, 0.5f - poolSize * 0.5f);
 		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(),
 				(float) Mth.clamp(rel.dot(Decal.axis1(face)), -poolLimit, poolLimit),

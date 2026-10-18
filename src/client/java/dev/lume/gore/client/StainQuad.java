@@ -27,8 +27,20 @@ import org.joml.Vector3f;
  * the same path entities use.
  */
 public final class StainQuad {
-	/** Pushes the quad off the surface it rests on, in world units. */
-	private static final float OFFSET = 0.006f;
+	/**
+	 * Pushes a wall decal off the block face, in world units (1 block). Six
+	 * millimetres sat inside the depth buffer's precision at range, so decals
+	 * z-fought with the wall they were painted on; two centimetres is still
+	 * invisible on the surface but far outside the noise.
+	 */
+	private static final float WORLD_OFFSET = 0.02f;
+
+	/**
+	 * The same lift for body stains, in <em>model</em> units (16 per block), so
+	 * a stain sits about a centimetre off the skin instead of inside it.
+	 */
+	private static final float MODEL_OFFSET = 0.25f;
+
 	private static final int CELL = 64;
 	/** Box size in model units; 64 units is four blocks. */
 	private static final float UNITS = CELL;
@@ -79,7 +91,7 @@ public final class StainQuad {
 
 	/**
 	 * Places one stain quad at the current pose, facing {@code outward}: orients the
-	 * quad from {@code outward}, offsets it by {@link #OFFSET} along {@code outward},
+	 * quad from {@code outward}, offsets it by {@link #MODEL_OFFSET} along {@code outward},
 	 * rolls it by {@code rot}, scales it so {@code size} is the quad's world size,
 	 * and submits the variant's baked part. The pose stack is left exactly as it
 	 * was found.
@@ -92,7 +104,7 @@ public final class StainQuad {
 		float scale = size / BLOCKS;
 
 		poseStack.pushPose();
-		poseStack.translate(outward.x() * OFFSET, outward.y() * OFFSET, outward.z() * OFFSET);
+		poseStack.translate(outward.x() * MODEL_OFFSET, outward.y() * MODEL_OFFSET, outward.z() * MODEL_OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.rotateDegrees(Axis.ZP, rot);
 		poseStack.scale(scale, scale, scale);
@@ -118,7 +130,7 @@ public final class StainQuad {
 		float scale = size / BLOCKS;
 
 		poseStack.pushPose();
-		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
+		poseStack.translate(face.getStepX() * WORLD_OFFSET, face.getStepY() * WORLD_OFFSET, face.getStepZ() * WORLD_OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(scale, scale, scale);
 		collector.submitModelPart(VARIANTS[variant & (GRID * GRID - 1)], poseStack, renderType,
@@ -147,7 +159,7 @@ public final class StainQuad {
 		// The cube spans model y in [-2, 2]; translate(0, 2f, 0) pins its top edge at
 		// the origin and scale(..., f, 1) grows it downward to y = 4f.
 		poseStack.pushPose();
-		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
+		poseStack.translate(face.getStepX() * WORLD_OFFSET, face.getStepY() * WORLD_OFFSET, face.getStepZ() * WORLD_OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(s, s, s);
 		poseStack.translate(0.0, 2.0f * f, 0.0);
@@ -165,7 +177,7 @@ public final class StainQuad {
 		// test_blood_atlas.bead_anchored.
 		float bead = Flow.beadScale(f);
 		poseStack.pushPose();
-		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
+		poseStack.translate(face.getStepX() * WORLD_OFFSET, face.getStepY() * WORLD_OFFSET, face.getStepZ() * WORLD_OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(s, s, s);
 		poseStack.translate(0.0, 4.0f * f + (2.0f - BEAD_TUCK * f) * bead, 0.0);
@@ -220,7 +232,7 @@ public final class StainQuad {
 
 		// Run
 		poseStack.pushPose();
-		poseStack.translate(normal.x() * OFFSET, normal.y() * OFFSET, normal.z() * OFFSET);
+		poseStack.translate(normal.x() * MODEL_OFFSET, normal.y() * MODEL_OFFSET, normal.z() * MODEL_OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(s, s, s);
 		poseStack.translate(0.0, 2.0f * f, 0.0);
@@ -233,7 +245,7 @@ public final class StainQuad {
 		// 2·bead puts its edge on the run's bottom (4f), the f-proportional
 		// tuck closes the anti-aliased seam (see submitDrip's comment).
 		poseStack.pushPose();
-		poseStack.translate(normal.x() * OFFSET, normal.y() * OFFSET, normal.z() * OFFSET);
+		poseStack.translate(normal.x() * MODEL_OFFSET, normal.y() * MODEL_OFFSET, normal.z() * MODEL_OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(s, s, s);
 		poseStack.translate(0.0, 4.0f * f + (2.0f - BEAD_TUCK * f) * bead, 0.0);

@@ -109,6 +109,16 @@ public final class DecalMerge {
 		return decal.variant() < STAIN_VARIANTS;
 	}
 
+	/**
+	 * True for the two pool cells (12, 13). Pools spread as they age
+	 * ({@link Flow#poolSize}) instead of being fixed stickers, so the renderer
+	 * needs to recognise them; the merge rules keep them apart because two
+	 * overlapping spreading blobs would visibly jump when they coalesce.
+	 */
+	public static boolean isPool(Decal decal) {
+		return decal.variant() == 12 || decal.variant() == 13;
+	}
+
 	private static boolean withinDripTolerance(Decal a, Decal b) {
 		return Math.abs(a.u() - b.u()) <= DRIP_DU && Math.abs(a.v() - b.v()) <= DRIP_DV;
 	}

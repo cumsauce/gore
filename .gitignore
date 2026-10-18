@@ -42,3 +42,7 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+
+# game logs written into the working tree by a run
+
+logs/

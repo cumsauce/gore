@@ -16,6 +16,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.ARGB;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
@@ -28,6 +29,14 @@ import net.minecraft.world.phys.Vec3;
  * scale, submit) lives in {@link StainQuad}, shared with the body and weapon
  * stains. The vanilla custom-geometry submit path is inert on 26.3, so the quad
  * goes through the model feature instead, which is the same path entities use.
+ *
+ * <p>It must be registered on {@code LevelRenderEvents.COLLECT_SUBMITS}, which
+ * fires at the tail of {@code LevelRenderer.submitFeatures}: submits made there
+ * are baked and drawn in the same frame. Submitting from a draw event (for
+ * example {@code AFTER_TRANSLUCENT_TERRAIN}) is a frame late — the decals then
+ * ride the previous frame's camera, so they swim over the world while the
+ * player moves, z-fight into the block face and pop in and out of view — and
+ * they are not submitted at all on frames where that draw call does not run.
  */
 public final class DecalRenderer {
 	/** Drips whose falling drop has already been shed; one break-off per drip. */
@@ -95,6 +104,20 @@ public final class DecalRenderer {
 						decal.u(), decal.v(), decal.variant(), decal.born()),
 				Drying.dryness(decal.born(), now, Drying.SCALE));
 
+		// Old blood thins out instead of sitting at full strength until the
+		// server's sweep deletes it; the two clocks are the same (Drying.fade),
+		// so the client and the server never disagree about when it is gone.
+		float fade = Drying.fade(decal.born(), now, Drying.SCALE);
+
+		if (fade <= 0.0f) {
+			return;
+		}
+
+		if (fade < 1.0f) {
+			color = ARGB.color(Math.round(ARGB.alpha(color) * fade),
+					ARGB.red(color), ARGB.green(color), ARGB.blue(color));
+		}
+
 		poseStack.pushPose();
 		poseStack.translate(center.x, center.y, center.z);
 
@@ -110,6 +133,15 @@ public final class DecalRenderer {
 				Vec3 bead = center.subtract(DecalFrame.tail(face, decal.rot()).scale(f * decal.size()));
 				level.addParticle(Gore.BLOOD_DROP, bead.x, bead.y, bead.z, 0.0, -0.02, 0.0);
 			}
+		} else if (DecalMerge.isPool(decal)) {
+			// A pool floods outward from where the blood landed instead of
+			// appearing at full size. The born stamp is its spreading clock;
+			// legacy pools (born == 0) are already settled.
+			long age = decal.born() == 0L || level == null
+					? Long.MAX_VALUE
+					: level.getGameTime() - decal.born();
+			StainQuad.submitOnFace(context.submitNodeCollector(), poseStack, decal.variant(),
+					Flow.poolSize(decal.size(), age), decal.rot(), light, face, color);
 		} else {
 			StainQuad.submitOnFace(context.submitNodeCollector(), poseStack, decal.variant(), decal.size(),
 					decal.rot(), light, face, color);

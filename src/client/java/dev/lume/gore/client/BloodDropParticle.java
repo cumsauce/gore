@@ -50,7 +50,10 @@ public class BloodDropParticle extends SingleQuadParticle {
 		// A splash droplet is a splinter of the one that landed: smallest radius in the
 		// band, so drag stops it within a hand's breadth instead of sending it away.
 		this.radiusM = micro ? ParticleLook.MIN_DROP_RADIUS_M : SprayModel.dropRadiusM(this.random);
-		this.quadSize = micro ? 0.02f : (float) (0.03 + 0.05 * this.radiusM / 1e-3);
+		// Drawn larger than life on purpose: at a true millimetre a droplet is
+		// sub-pixel at any useful range, so the quad carries the physical radius
+		// up into something the eye can follow as it crosses the frame.
+		this.quadSize = micro ? 0.02f : (float) (0.045 + 0.075 * this.radiusM / 1e-3);
 		this.lifetime = micro ? 14 + this.random.nextInt(12) : 60;
 		this.hasPhysics = true;
 		this.xd = vx + (this.random.nextDouble() - 0.5) * 0.04;

@@ -261,6 +261,22 @@ def check_legacy_meanings(cells):
     return bad
 
 
+def check_bead_anchored(cells):
+    # Cell 15's bead must ride the TOP of its cell (v=0 maps to model −Y, the
+    # run's bottom end) so the drip's 2·bead translate pins its edge to the
+    # run's bottom. A centred bead floats detached below the run line.
+    bad = []
+    bead = cells[15]
+    ys = [y for y, row in enumerate(bead) if any(p[3] >= OPAQUE for p in row)]
+    if not ys:
+        bad.append("cell 15 empty, cannot judge bead anchor")
+    elif ys[0] > 2 or ys[-1] >= CELL // 2:
+        bad.append(
+            f"cell 15 bead opaque rows {ys[0]}..{ys[-1]} not anchored at cell top"
+        )
+    return bad
+
+
 def check_rim_darker_than_core(cells):
     bad = []
     for cell in range(12):
@@ -317,6 +333,7 @@ def main():
         ("no_straight_spine", check_no_straight_spine(cells)),
         ("tail_tapers", check_tail_tapers(cells)),
         ("legacy_meanings", check_legacy_meanings(cells)),
+        ("bead_anchored", check_bead_anchored(cells)),
         ("rim_darker_than_core", check_rim_darker_than_core(cells)),
         ("colour_spread", check_colour_spread(cells)),
         ("sheen_present", check_sheen_present(cells)),

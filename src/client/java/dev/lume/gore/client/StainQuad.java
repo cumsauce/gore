@@ -74,6 +74,9 @@ public final class StainQuad {
 		}
 	}
 
+	/** How far the bead sinks into the run's lower end, as a fraction of flow. */
+	private static final float BEAD_TUCK = 0.5f;
+
 	/**
 	 * Places one stain quad at the current pose, facing {@code outward}: orients the
 	 * quad from {@code outward}, offsets it by {@link #OFFSET} along {@code outward},
@@ -153,14 +156,19 @@ public final class StainQuad {
 				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 
-		// The bead: hangs at the run's bottom end — the 2·beadScale term puts its
-		// top edge at the run's bottom (4f), so it never bulges above the wound.
+		// The bead: hangs at the run's bottom end. The bead cell is anchored at
+		// the TOP of its atlas cell (v=0 maps to model −Y), so the 2·beadScale
+		// term puts its edge exactly on the run's bottom (4f); the f-proportional
+		// tuck sinks it slightly into the run to close the anti-aliased seam,
+		// tapering back to plain contact at f=0 so it never bulges above the wound.
+		// Requires the bead blob to touch cell-top v=0 — enforced by
+		// test_blood_atlas.bead_anchored.
 		float bead = Flow.beadScale(f);
 		poseStack.pushPose();
 		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(s, s, s);
-		poseStack.translate(0.0, 4.0f * f + 2.0f * bead, 0.0);
+		poseStack.translate(0.0, 4.0f * f + (2.0f - BEAD_TUCK * f) * bead, 0.0);
 		poseStack.scale(bead, bead, bead);
 		collector.submitModelPart(VARIANTS[15], poseStack, renderType,
 				light, OverlayTexture.NO_OVERLAY, null, color);
@@ -221,12 +229,14 @@ public final class StainQuad {
 				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 
-		// Bead
+		// Bead — same geometry as submitDrip: bead cell anchored at cell top,
+		// 2·bead puts its edge on the run's bottom (4f), the f-proportional
+		// tuck closes the anti-aliased seam (see submitDrip's comment).
 		poseStack.pushPose();
 		poseStack.translate(normal.x() * OFFSET, normal.y() * OFFSET, normal.z() * OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(s, s, s);
-		poseStack.translate(0.0, 4.0f * f + 2.0f * bead, 0.0);
+		poseStack.translate(0.0, 4.0f * f + (2.0f - BEAD_TUCK * f) * bead, 0.0);
 		poseStack.scale(bead, bead, bead);
 		collector.submitModelPart(VARIANTS[15], poseStack, renderType,
 				light, OverlayTexture.NO_OVERLAY, null, color);

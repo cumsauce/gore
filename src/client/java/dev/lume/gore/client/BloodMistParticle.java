@@ -1,6 +1,7 @@
 package dev.lume.gore.client;
 
 import dev.lume.gore.Ballistics;
+import dev.lume.gore.ParticleLook;
 import dev.lume.gore.SprayModel;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
@@ -16,6 +17,11 @@ import net.minecraft.world.phys.Vec3;
  * couple of ticks inside ~0.3 blocks; it then hangs where it was thrown, drifts on a
  * random walk, and evaporates in under 1.5 seconds (alpha decays exponentially and the
  * sprite advances as it spreads).
+ *
+ * <p>Deliberately does <em>not</em> stretch along its velocity: a droplet smears because
+ * it crosses its own width in a frame, whereas mist is a cloud whose droplets have
+ * already been stopped by drag. Each puff is given a fixed random roll instead, so three
+ * noise sprites do not read as three identical squares.
  */
 public class BloodMistParticle extends SingleQuadParticle {
 	private final SpriteSet sprites;
@@ -25,16 +31,24 @@ public class BloodMistParticle extends SingleQuadParticle {
 		super(level, x, y, z, sprites.first());
 		this.sprites = sprites;
 		this.radiusM = SprayModel.mistRadiusM(this.random);
-		this.quadSize = (float) (0.08 + 0.08 * (this.radiusM - 2e-5) / 4e-5);
-		this.lifetime = 12 + this.random.nextInt(13);
+		this.quadSize = ParticleLook.quadFor((float) this.radiusM);
+		// The cloud has to hang: a floor of 40 ticks keeps it reading as volume between
+		// two frames instead of blinking out like a dot.
+		this.lifetime = ParticleLook.MIST_LIFETIME_FLOOR + this.random.nextInt(24);
 		this.hasPhysics = false;
+		// Fixed per-puff roll so the puffs do not all present the same face of the noise.
+		this.roll = (float) (this.random.nextDouble() * Math.PI * 2.0);
+		this.oRoll = this.roll;
 		this.xd = vx + (this.random.nextDouble() - 0.5) * 0.06;
 		this.yd = vy + (this.random.nextDouble() - 0.5) * 0.06;
 		this.zd = vz + (this.random.nextDouble() - 0.5) * 0.06;
-		this.rCol = 0.62f;
-		this.gCol = 0.075f;
-		this.bCol = 0.07f;
-		this.alpha = 0.9f;
+		// Thin blood mist transmits light, so it reads pink-red rather than dark red.
+		// A bright saturated tint is also the only thing that survives compositing over
+		// stone and sky: a dark red at half opacity is just a grey smudge.
+		this.rCol = 0.85f;
+		this.gCol = 0.055f;
+		this.bCol = 0.045f;
+		this.alpha = ParticleLook.MIST_PEAK_ALPHA;
 	}
 
 	@Override
@@ -57,7 +71,7 @@ public class BloodMistParticle extends SingleQuadParticle {
 		this.zd = v.z;
 		this.move(this.xd, this.yd, this.zd);
 		this.quadSize *= 1.03f; // dispersion
-		this.alpha = 0.9f * (float) Math.exp(-3.0 * this.age / this.lifetime); // evaporation
+		this.alpha = ParticleLook.alphaAt((float) this.age / this.lifetime); // evaporation
 		this.setSpriteFromAge(this.sprites);
 	}
 

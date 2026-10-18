@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 
 /**
@@ -16,6 +17,7 @@ import net.minecraft.resources.Identifier;
  */
 public final class StainManager {
 	private static final Map<Integer, List<GoreStain>> BY_ENTITY = new HashMap<>();
+	private static final Map<Integer, Long> RECEIVED_TICK = new HashMap<>();
 	private static Identifier dimension;
 
 	private StainManager() {
@@ -28,8 +30,9 @@ public final class StainManager {
 	 * arrives: the server sends an empty list meaning "this entity is clean".
 	 */
 	public static void add(int entityId, List<GoreStain> stains) {
-		if (stains.isEmpty()) {
+		if (stains == null || stains.isEmpty()) {
 			BY_ENTITY.remove(entityId);
+			RECEIVED_TICK.remove(entityId);
 			return;
 		}
 
@@ -38,6 +41,12 @@ public final class StainManager {
 			list.remove(0);
 		}
 		BY_ENTITY.put(entityId, list);
+		// Track when this stain set was received so age-driven effects (body
+		// drips) can animate from a known origin even though GoreStain carries
+		// no born field (protocol frozen).
+		Minecraft mc = Minecraft.getInstance();
+		long now = (mc.level != null) ? mc.level.getGameTime() : 0L;
+		RECEIVED_TICK.put(entityId, now);
 	}
 
 	/**
@@ -59,7 +68,13 @@ public final class StainManager {
 
 	public static void clear() {
 		BY_ENTITY.clear();
+		RECEIVED_TICK.clear();
 		dimension = null;
+	}
+
+	/** Client game-time at which the entity's current stain set was received. */
+	public static long receivedTick(int entityId) {
+		return RECEIVED_TICK.getOrDefault(entityId, 0L);
 	}
 
 	/** Returns an immutable copy of the entity's stains, or an empty list if unknown. */

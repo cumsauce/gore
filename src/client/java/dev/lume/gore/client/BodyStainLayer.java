@@ -1,10 +1,14 @@
 package dev.lume.gore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.lume.gore.BloodAppearance;
+import dev.lume.gore.CubeProjection;
+import dev.lume.gore.Flow;
 import dev.lume.gore.GoreStain;
 import java.util.List;
 import java.util.Optional;
 import net.fabricmc.fabric.api.client.rendering.v1.FabricRenderState;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -57,13 +61,13 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 
 		EntityModel<LivingEntityRenderState> model = getParentModel();
 
-		for (GoreStain stain : stains) {
-			submitStain(poseStack, collector, light, state, model, stain);
+		for (int i = 0; i < stains.size(); i++) {
+			submitStain(poseStack, collector, light, state, model, stains.get(i), i);
 		}
 	}
 
 	private static void submitStain(PoseStack poseStack, SubmitNodeCollector collector, int light,
-			LivingEntityRenderState state, EntityModel<LivingEntityRenderState> model, GoreStain stain) {
+			LivingEntityRenderState state, EntityModel<LivingEntityRenderState> model, GoreStain stain, int index) {
 		Vector3f travel = new Vector3f(stain.dirX(), stain.dirY(), stain.dirZ());
 
 		if (travel.lengthSquared() < 1.0E-8F) {
@@ -124,14 +128,57 @@ public class BodyStainLayer extends RenderLayer<LivingEntityRenderState, EntityM
 
 		part.translateAndRotate(poseStack);
 
-		// The part's surface along the wound direction, in the part's own frame.
-		// `ownExtentAlong` reads the part's cubes directly without pushing anything,
-		// so measurement and placement share this one frame.
-		float reach = StainAnchor.ownExtentAlong(poseStack, part, local);
+		// The face of the part the wound landed on. This is the cube surface
+		// itself, not the part's far extent along the wound direction, so the
+		// stain sits flat on the body instead of on a bounding volume around it.
+		// `projectOnto` measures in the part's own frame without pushing anything,
+		// so the point it returns is in exactly the frame the next translate uses.
+		Optional<CubeProjection.Result> face = StainAnchor.projectOnto(part, local);
 
-		if (Float.isFinite(reach)) {
-			poseStack.translate(local.x() * reach, local.y() * reach, local.z() * reach);
-			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, local);
+		if (face.isPresent()) {
+			float[] point = face.get().point();
+			float[] normal = face.get().normal();
+
+			poseStack.translate(point[0], point[1], point[2]);
+
+			// GoreStain has no born stamp and the payload is frozen, so body
+			// stains cannot dry yet — they always render wet. The seed comes
+			// from the stain's own fields plus its index, so two identical
+			// rolls on one entity still read as two different stains.
+			long seed = BloodAppearance.seedFor(stain.sourceType(), stain.dirX(), stain.dirY(), stain.dirZ(),
+					stain.size(), stain.rot(), stain.variant(), index);
+			int color = BloodAppearance.tint(seed, 0.0f);
+			Vector3f normalVec = new Vector3f(normal[0], normal[1], normal[2]);
+			StainQuad.submit(collector, poseStack, stain.variant(), stain.size(), stain.rot(), light, normalVec, color);
+
+			// M5: wound lacerations (variant >= 16) grow a body drip downward
+			// from the wound, driven by Flow like wall drips.
+			if (stain.variant() >= 16) {
+				long received = 0L;
+				if (state instanceof FabricRenderState frs) {
+					Long rt = frs.getData(StainStateKeys.RECEIVED_TICK);
+					if (rt != null) received = rt;
+				}
+				Minecraft mc = Minecraft.getInstance();
+				long now = (mc.level != null) ? mc.level.getGameTime() : 0L;
+				long age = now - received;
+				float f = Flow.length(age);
+				if (f > 0.0f) {
+					Vector3f gravity = new Vector3f(0.0f, -1.0f, 0.0f);
+					float gdot = gravity.dot(normalVec);
+					Vector3f downward = new Vector3f(
+							gravity.x() - normalVec.x() * gdot,
+							gravity.y() - normalVec.y() * gdot,
+							gravity.z() - normalVec.z() * gdot);
+					if (downward.lengthSquared() < 1.0e-8f) {
+						downward.set(1.0f, 0.0f, 0.0f);
+					} else {
+						downward.normalize();
+					}
+					StainQuad.submitBodyDrip(collector, poseStack, stain.size(), light,
+							normalVec, downward, f, color);
+				}
+			}
 		}
 
 		poseStack.popPose();

@@ -11,4 +11,7 @@ public final class StainStateKeys {
 
 	/** The entity's current stain list, read by the stain render layer. */
 	public static final RenderStateDataKey<List<GoreStain>> STAINS = RenderStateDataKey.create(() -> "gore:stains");
+
+	/** Client game-time at which the entity's current stain set was received. */
+	public static final RenderStateDataKey<Long> RECEIVED_TICK = RenderStateDataKey.create(() -> "gore:received_tick");
 }

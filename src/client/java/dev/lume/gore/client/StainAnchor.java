@@ -1,6 +1,7 @@
 package dev.lume.gore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.lume.gore.CubeProjection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -148,7 +149,11 @@ public final class StainAnchor {
 		return switch (region) {
 			case ARM, CHEST, HEAD, LEG -> resolve(model, Region.BODY, outward);
 			case FOOT -> resolve(model, Region.LEG, outward);
-			case BODY -> singlePart(model);
+			// A model whose parts are named something this class has never heard of
+			// is exactly the case that used to draw nothing at all. Give it the
+			// part carrying the most geometry (the torso on every vanilla mob),
+			// and only then the root.
+			case BODY -> largestPart(model);
 		};
 	}
 
@@ -189,53 +194,6 @@ public final class StainAnchor {
 		return local.normalize();
 	}
 
-	/**
-	 * Returns the part's own extent along {@code outward}, in the frame the pose
-	 * stack currently defines, reading the part's cubes directly rather than
-	 * through {@link ModelPart#visit}.
-	 *
-	 * <p>A caller that has already pushed the part's transform must use this one:
-	 * {@code visit} applies that transform itself, so walking the part there would
-	 * apply it twice and measure along the wrong direction. This variant pushes
-	 * nothing, so the measurement is in exactly the frame the caller's next
-	 * {@code translate} will be.
-	 *
-	 * <p>{@code outward} is in the pose stack's frame. Returns
-	 * {@link Float#NEGATIVE_INFINITY} when the part has no cubes, which callers
-	 * treat as "skip this stain".
-	 */
-	public static float ownExtentAlong(PoseStack poseStack, ModelPart part, Vector3f outward) {
-		float[] support = {Float.NEGATIVE_INFINITY};
-
-		// `visit` walks the part and its children from a fresh pose, so the pose it
-		// hands a cube is that cube's transform down from the part's *parent*, not
-		// from the caller: the part's own transform for its own cubes, and the
-		// part's transform composed with a child's for that child's. Undoing the
-		// part's own transform therefore maps the part's cubes to their raw
-		// coordinates and a child's to its offset within the part — the frame
-		// `outward` was already reduced into — no matter what the caller pushed
-		// above. Using the caller's whole stack here instead would leave the entity
-		// and root transforms stranded inside the mapping.
-		PoseStack partOnly = new PoseStack();
-		part.translateAndRotate(partOnly);
-		Matrix4f undoPartFrame = new Matrix4f(partOnly.last().pose()).invert();
-
-		part.visit(new PoseStack(), (pose, name, index, cube) -> {
-			Matrix4f toPartFrame = new Matrix4f(undoPartFrame).mul(pose.pose());
-
-			for (int corner = 0; corner < 8; corner++) {
-				Vector3f point = new Vector3f(
-						(corner & 1) == 0 ? cube.minX : cube.maxX,
-						(corner & 2) == 0 ? cube.minY : cube.maxY,
-						(corner & 4) == 0 ? cube.minZ : cube.maxZ);
-				toPartFrame.transformPosition(point);
-				support[0] = Math.max(support[0], point.dot(outward));
-			}
-		});
-
-		return support[0];
-	}
-
 	/** Drops the per-model caches; called when render state is invalidated (resource reload). */
 	public static void invalidate() {
 		synchronized (ALL_PARTS) {
@@ -243,9 +201,97 @@ public final class StainAnchor {
 		}
 	}
 
-	private static Optional<ModelPart> singlePart(EntityModel<?> model) {
-		List<ModelPart> parts = allParts(model);
-		return parts.size() == 1 ? Optional.of(parts.get(0)) : Optional.empty();
+	/**
+	 * The part carrying the most cubes, which is the torso on every vanilla mob.
+	 *
+	 * <p>This is the last resort before the root and it exists so that a model
+	 * with unfamiliar part names still bleeds. Counting a part's own cubes plus
+	 * its children's means a parent wins over any single limb, which is what a
+	 * wound on "the body" should get.
+	 */
+	private static Optional<ModelPart> largestPart(EntityModel<?> model) {
+		ModelPart best = null;
+		int bestCubes = 0;
+
+		for (ModelPart part : allParts(model)) {
+			int cubes = countCubes(part);
+
+			if (cubes > bestCubes) {
+				bestCubes = cubes;
+				best = part;
+			}
+		}
+
+		if (best != null && bestCubes > 0) {
+			return Optional.of(best);
+		}
+
+		return Optional.of(model.root());
+	}
+
+	private static int countCubes(ModelPart part) {
+		int[] count = {0};
+		part.visit(new PoseStack(), (pose, name, index, cube) -> count[0]++);
+		return count[0];
+	}
+
+	/**
+	 * The part's cubes as axis-aligned boxes in the part's own frame — the same
+	 * frame {@link #restingDirection} returns its direction in, and the same one
+	 * {@link #ownExtentAlong} measures in.
+	 *
+	 * <p>As in {@code ownExtentAlong}, the part's own transform is divided back
+	 * out so a child's cubes are expressed relative to this part rather than to
+	 * the entity. Cube corners are transformed and re-bounded, so an animated part
+	 * contributes the box that actually encloses it.
+	 */
+	public static List<CubeProjection.Box> boxesOf(ModelPart part) {
+		List<CubeProjection.Box> boxes = new java.util.ArrayList<>();
+
+		PoseStack partOnly = new PoseStack();
+		part.translateAndRotate(partOnly);
+		Matrix4f undoPartFrame = new Matrix4f(partOnly.last().pose()).invert();
+
+		part.visit(new PoseStack(), (pose, name, index, cube) -> {
+			Matrix4f toPartFrame = new Matrix4f(undoPartFrame).mul(pose.pose());
+
+			float minX = Float.MAX_VALUE;
+			float minY = Float.MAX_VALUE;
+			float minZ = Float.MAX_VALUE;
+			float maxX = -Float.MAX_VALUE;
+			float maxY = -Float.MAX_VALUE;
+			float maxZ = -Float.MAX_VALUE;
+
+			for (int corner = 0; corner < 8; corner++) {
+				Vector3f point = new Vector3f(
+						(corner & 1) == 0 ? cube.minX : cube.maxX,
+						(corner & 2) == 0 ? cube.minY : cube.maxY,
+						(corner & 4) == 0 ? cube.minZ : cube.maxZ);
+				toPartFrame.transformPosition(point);
+
+				minX = Math.min(minX, point.x());
+				minY = Math.min(minY, point.y());
+				minZ = Math.min(minZ, point.z());
+				maxX = Math.max(maxX, point.x());
+				maxY = Math.max(maxY, point.y());
+				maxZ = Math.max(maxZ, point.z());
+			}
+
+			boxes.add(new CubeProjection.Box(minX, minY, minZ, maxX - minX, maxY - minY, maxZ - minZ, name));
+		});
+
+		return boxes;
+	}
+
+	/**
+	 * The face of the part the wound landed on, or empty when the part has no
+	 * geometry to land on.
+	 *
+	 * <p>{@code outward} is in the part's own frame, as
+	 * {@link #restingDirection} returns it.
+	 */
+	public static Optional<CubeProjection.Result> projectOnto(ModelPart part, Vector3f outward) {
+		return CubeProjection.project(boxesOf(part), new float[] {outward.x(), outward.y(), outward.z()});
 	}
 
 	/**

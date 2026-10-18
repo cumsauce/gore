@@ -12,8 +12,9 @@ import net.minecraft.world.phys.Vec3;
  * wall-decal roll so a body stain reads at the same scale as a wall splat.
  */
 public final class StainWounds {
-	/** Atlas cells 0..11 are impact splats; cells 12..15 are the four top-down pool cells. */
-	private static final int IMPACT_CELLS = 12;
+	/** Atlas cells 16..19 are wound lacerations (M5); cells 0..11 are impact splats. */
+	private static final int WOUND_CELLS = 4;
+	private static final int WOUND_BASE = 16;
 	/** Hard ceiling on stain size. */
 	private static final float MAX_SIZE = 0.42f;
 
@@ -39,10 +40,10 @@ public final class StainWounds {
 				dirByte(dir.z),
 				Math.min(MAX_SIZE, 0.22f + 0.18f * random.nextFloat() + severity * 0.10f),
 				random.nextFloat() * 360.0f,
-				// Body stains draw from the twelve impact cells only: cells 12..15
-				// are the pool cells, painted top-down for a flat floor, and they
-				// look wrong stuck to a limb.
-				random.nextInt(IMPACT_CELLS));
+				// M5: body stains are wound lacerations (cells 16..19), not
+				// impact splats. The wound cell is a dark gash with raised edges,
+				// and a body drip grows downward from it (see BodyStainLayer).
+				WOUND_BASE + random.nextInt(WOUND_CELLS));
 	}
 
 	/**

@@ -162,8 +162,13 @@ public final class Bleeding {
 			level.sendParticles(Gore.BLOOD_DROP, wound.x, wound.y, wound.z, 0, drop.x, drop.y, drop.z, 1.0);
 		}
 
+		// Mist is pushed clear of the victim along the travel direction: at the
+		// wound itself the puffs sit inside the model's silhouette and the camera
+		// never sees them. 0.55 blocks past the wound is outside a body-sized
+		// volume while still reading as coming from the impact.
+		Vec3 mistOrigin = wound.add(dir.scale(0.55));
 		for (Vec3 mist : SprayModel.mistVelocities(dir, severity, random)) {
-			level.sendParticles(Gore.BLOOD_MIST, wound.x, wound.y, wound.z, 0, mist.x, mist.y, mist.z, 1.0);
+			level.sendParticles(Gore.BLOOD_MIST, mistOrigin.x, mistOrigin.y, mistOrigin.z, 0, mist.x, mist.y, mist.z, 1.0);
 		}
 	}
 

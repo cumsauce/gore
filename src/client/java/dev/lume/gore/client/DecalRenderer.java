@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.lume.gore.Decal;
 import dev.lume.gore.DecalFrame;
 import dev.lume.gore.DecalMerge;
+import dev.lume.gore.BloodAppearance;
 import dev.lume.gore.Drying;
 import dev.lume.gore.Flow;
 import dev.lume.gore.Gore;
@@ -89,7 +90,10 @@ public final class DecalRenderer {
 		}
 
 		long now = level != null ? level.getGameTime() : 0L;
-		int color = Drying.tint(Drying.dryness(decal.born(), now, Drying.SCALE));
+		int color = BloodAppearance.tint(
+				BloodAppearance.seedFor(decal.x(), decal.y(), decal.z(), decal.face(),
+						decal.u(), decal.v(), decal.variant(), decal.born()),
+				Drying.dryness(decal.born(), now, Drying.SCALE));
 
 		poseStack.pushPose();
 		poseStack.translate(center.x, center.y, center.z);

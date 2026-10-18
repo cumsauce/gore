@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.Direction;
+import org.joml.Matrix3f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -39,7 +40,9 @@ public final class StainQuad {
 	 * Passing 1 left the UVs in texel units, so the quad repeat-wrapped the whole atlas
 	 * into a uniform red wash instead of showing one cell.
 	 */
-	private static final float ATLAS_SIZE = 256.0f;
+	private static final float ATLAS_SIZE = 512.0f;
+	/** Cells per atlas row; the atlas is an 8x8 grid of {@link #CELL}-texel cells. */
+	private static final int GRID = 8;
 
 	private static final ModelPart[] VARIANTS = buildVariants();
 	private static final Vector3f MODEL_FRONT = new Vector3f(0.0f, 0.0f, -1.0f);
@@ -47,11 +50,11 @@ public final class StainQuad {
 	private static RenderType renderType;
 
 	private static ModelPart[] buildVariants() {
-		ModelPart[] parts = new ModelPart[16];
+		ModelPart[] parts = new ModelPart[GRID * GRID];
 
-		for (int cell = 0; cell < 16; cell++) {
-			int cellX = cell & 3;
-			int cellY = cell >> 2;
+		for (int cell = 0; cell < parts.length; cell++) {
+			int cellX = cell % GRID;
+			int cellY = cell / GRID;
 			ModelPart.Cube cube = new ModelPart.Cube(cellX * CELL - 1, cellY * CELL - 1,
 					-UNITS / 2.0f, -UNITS / 2.0f, 0.0f, UNITS, UNITS, 1.0f,
 					0.0f, 0.0f, 0.0f, false, ATLAS_SIZE, ATLAS_SIZE, Set.of(Direction.NORTH));
@@ -79,7 +82,7 @@ public final class StainQuad {
 	 * was found.
 	 */
 	public static void submit(SubmitNodeCollector collector, PoseStack poseStack,
-			int variant, float size, float rot, int light, Vector3f outward) {
+			int variant, float size, float rot, int light, Vector3f outward, int color) {
 		init();
 
 		Quaternionf orientation = new Quaternionf().rotateTo(MODEL_FRONT, outward);
@@ -90,8 +93,8 @@ public final class StainQuad {
 		poseStack.rotate(orientation);
 		poseStack.rotateDegrees(Axis.ZP, rot);
 		poseStack.scale(scale, scale, scale);
-		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
-				light, OverlayTexture.NO_OVERLAY, null);
+		collector.submitModelPart(VARIANTS[variant & (GRID * GRID - 1)], poseStack, renderType,
+				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 	}
 
@@ -115,7 +118,7 @@ public final class StainQuad {
 		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(scale, scale, scale);
-		collector.submitModelPart(VARIANTS[variant & 15], poseStack, renderType,
+		collector.submitModelPart(VARIANTS[variant & (GRID * GRID - 1)], poseStack, renderType,
 				light, OverlayTexture.NO_OVERLAY, null, color);
 		poseStack.popPose();
 	}
@@ -155,6 +158,72 @@ public final class StainQuad {
 		float bead = Flow.beadScale(f);
 		poseStack.pushPose();
 		poseStack.translate(face.getStepX() * OFFSET, face.getStepY() * OFFSET, face.getStepZ() * OFFSET);
+		poseStack.rotate(orientation);
+		poseStack.scale(s, s, s);
+		poseStack.translate(0.0, 4.0f * f + 2.0f * bead, 0.0);
+		poseStack.scale(bead, bead, bead);
+		collector.submitModelPart(VARIANTS[15], poseStack, renderType,
+				light, OverlayTexture.NO_OVERLAY, null, color);
+		poseStack.popPose();
+	}
+
+	/**
+	 * Body drip: a Flow-driven run + bead that grows downward in model space on
+	 * the projected face of a body part. Mirrors {@link #submitDrip} but takes
+	 * an explicit face normal and a downward direction instead of a
+	 * {@link net.minecraft.core.Direction}, because a model surface has no
+	 * axis-aligned face.
+	 */
+	public static void submitBodyDrip(SubmitNodeCollector collector, PoseStack poseStack,
+			float size, int light, Vector3f normal, Vector3f downward, float f, int color) {
+		init();
+		if (renderType == null) {
+			return;
+		}
+		// Project downward onto the plane perpendicular to normal so the run
+		// stays on the surface even when gravity is not parallel to the face.
+		Vector3f tail = new Vector3f(downward);
+		float dot = tail.dot(normal);
+		tail.sub(normal.x() * dot, normal.y() * dot, normal.z() * dot);
+		if (tail.lengthSquared() < 1.0e-8f) {
+			// Face is horizontal: fall back to an arbitrary in-plane axis.
+			if (Math.abs(normal.y()) < 0.9f) {
+				tail.set(0.0f, 1.0f, 0.0f);
+			} else {
+				tail.set(1.0f, 0.0f, 0.0f);
+			}
+			float d = tail.dot(normal);
+			tail.sub(normal.x() * d, normal.y() * d, normal.z() * d);
+		}
+		tail.normalize();
+
+		// Proper rotation: columns map model X -> tail x normal, model Y -> -tail,
+		// model Z -> -normal (determinant +1). Model -Y is the atlas tail-up.
+		Vector3f xCol = new Vector3f(
+				tail.y() * normal.z() - tail.z() * normal.y(),
+				tail.z() * normal.x() - tail.x() * normal.z(),
+				tail.x() * normal.y() - tail.y() * normal.x());
+		Vector3f yCol = new Vector3f(-tail.x(), -tail.y(), -tail.z());
+		Vector3f zCol = new Vector3f(-normal.x(), -normal.y(), -normal.z());
+		Quaternionf orientation = new Quaternionf().setFromNormalized(new Matrix3f(xCol, yCol, zCol));
+
+		float s = size / BLOCKS;
+		float bead = Flow.beadScale(f);
+
+		// Run
+		poseStack.pushPose();
+		poseStack.translate(normal.x() * OFFSET, normal.y() * OFFSET, normal.z() * OFFSET);
+		poseStack.rotate(orientation);
+		poseStack.scale(s, s, s);
+		poseStack.translate(0.0, 2.0f * f, 0.0);
+		poseStack.scale(Flow.widthScale(f), f, 1.0f);
+		collector.submitModelPart(VARIANTS[14], poseStack, renderType,
+				light, OverlayTexture.NO_OVERLAY, null, color);
+		poseStack.popPose();
+
+		// Bead
+		poseStack.pushPose();
+		poseStack.translate(normal.x() * OFFSET, normal.y() * OFFSET, normal.z() * OFFSET);
 		poseStack.rotate(orientation);
 		poseStack.scale(s, s, s);
 		poseStack.translate(0.0, 4.0f * f + 2.0f * bead, 0.0);

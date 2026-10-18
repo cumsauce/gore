@@ -387,13 +387,17 @@ def draw_run(buf, cell_x, cell_y, seed):
 
 
 def draw_bead(buf, cell_x, cell_y, seed):
-    """Drip leading bead: a noise-modulated blob centred in the cell."""
+    """Drip leading bead: a noise-modulated blob anchored at the TOP of the
+    cell so its opaque region starts at model y = -2 (full cube top). This
+    makes the bead's top align with the run's bottom (4f) after the
+    submitDrip transform, so the circle is never detached from the line."""
     clip = (cell_x, cell_y, cell_x + CELL - 1, cell_y + CELL - 1)
-    prims = [(0, cell_x + 31.5, cell_y + 31.5, 9.0, 8.0, seed, BODY_WOBBLE)]
+    bead_cy = cell_y + 8.0
+    prims = [(0, cell_x + 31.5, bead_cy, 9.0, 8.0, seed, BODY_WOBBLE)]
     specs = [
         (
             cell_x + 31.5 - SPEC_OFFSET * 8.0,
-            cell_y + 31.5 - SPEC_OFFSET * 4.4,
+            bead_cy - SPEC_OFFSET * 4.4,
             max(SPEC_MIN_R, SPEC_SCALE * 8.0),
             1.0,
         )

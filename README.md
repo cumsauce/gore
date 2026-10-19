@@ -68,7 +68,7 @@ Three tools sit between the unit tests and the client game test. The first two n
 ./gradlew previewBlood -Pscene=spray -Pto=120 -Pstep=2 -Poverlay
 ```
 
-Scenes are `spray` (one hard hit through the same `Bleeding` decal code as the game, droplets landing at their flight times), `cluster`, `drips`, `pool`, `merge` (droplets landing on one spot through `DecalMerge`), or `all`. It writes `build/inspect/<scene>/frames/tNNNN.png`, `<scene>.apng` and `<scene>-sheet.png`, and prints decals, kernels, lit texels and mean alpha per tick. `-Poverlay` marks each kernel's centre and support, `-Pseed`, `-Pfrom`, `-Pscale` (pixels per texel) and `-Pgore.dryScale` change the run. Scenes live in `src/test/java/dev/lume/gore/PreviewScenes.java`.
+Scenes are `spray` (one hard hit through the same `Bleeding` decal code as the game, droplets landing at their flight times), `kill` (a killing blow's all-round burst and gib smears), `cluster`, `drips`, `pool`, `merge` (droplets landing on one spot through `DecalMerge`), or `all`. It writes `build/inspect/<scene>/frames/tNNNN.png`, `<scene>.apng` and `<scene>-sheet.png`, and prints decals, kernels, lit texels and mean alpha per tick. `-Poverlay` marks each kernel's centre and support, `-Pseed`, `-Pfrom`, `-Pscale` (pixels per texel) and `-Pgore.dryScale` change the run. Scenes live in `src/test/java/dev/lume/gore/PreviewScenes.java`.
 
 **Flight check.** Flies every stain-carrying droplet of a spray scene the way `BloodDropParticle` does (`Ballistics.arcVelocity`/`arcPoint` over `born − launch` ticks) and fails if one does not end on its stain's `Decal.surfacePoint` on its born tick. It prints a table and draws side and top views of the paths to `build/inspect/flight/flight-<seed>.png`. `FlightCheckTest` runs the same check for 20 seeds in `./gradlew test`.
 
@@ -76,7 +76,7 @@ Scenes are `spray` (one hard hit through the same `Bleeding` decal code as the g
 ./gradlew flightCheck -Pseed=7 -Pseverity=0.9
 ```
 
-**Particle trace.** With `-Dgore.trace=<file>`, every `BloodDropParticle` (types `flight`, `drop`, `micro`), `BloodMistParticle` and `BloodJetParticle` appends one JSON line per tick: id, type, game time, age, position, interpolation origin (`xo/yo/zo`), velocity, alpha and size. The client game test always writes `~/gore-run/clientGameTest/gore-trace.jsonl`. Analyse it with:
+**Particle trace.** With `-Dgore.trace=<file>`, every `BloodDropParticle` (types `flight`, `drop`, `micro`), `BloodMistParticle`, `BloodJetParticle` and `BloodGibParticle` (type `gib`) appends one JSON line per tick: id, type, game time, age, position, interpolation origin (`xo/yo/zo`), velocity, alpha and size. The client game test always writes `~/gore-run/clientGameTest/gore-trace.jsonl`. Analyse it with:
 
 ```sh
 python3 tools/trace.py ~/gore-run/clientGameTest/gore-trace.jsonl

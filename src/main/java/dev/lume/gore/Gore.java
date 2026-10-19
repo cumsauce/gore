@@ -29,6 +29,12 @@ public class Gore implements ModInitializer {
 	 * each client simulates the spray it produces.
 	 */
 	public static final SimpleParticleType BLOOD_JET = FabricParticleTypes.simple();
+	/**
+	 * A chunk of flesh thrown by a kill. Gibs fly to floor smears the server
+	 * placed (see {@link GorePayloads.DecalsPayload#gibs}); this type only
+	 * registers their sprites with the client.
+	 */
+	public static final SimpleParticleType BLOOD_GIB = FabricParticleTypes.simple();
 
 	/** How bloody a piece of gear is, 0..100. Purely cosmetic. */
 	public static final DataComponentType<Integer> BLOOD = Registry.register(
@@ -49,6 +55,7 @@ public class Gore implements ModInitializer {
 		Registry.register(BuiltInRegistries.PARTICLE_TYPE, id("blood_mist"), BLOOD_MIST);
 		Registry.register(BuiltInRegistries.PARTICLE_TYPE, id("blood_drop"), BLOOD_DROP);
 		Registry.register(BuiltInRegistries.PARTICLE_TYPE, id("blood_jet"), BLOOD_JET);
+		Registry.register(BuiltInRegistries.PARTICLE_TYPE, id("blood_gib"), BLOOD_GIB);
 
 		PayloadTypeRegistry.clientboundPlay().register(GorePayloads.DecalsPayload.TYPE, GorePayloads.DECALS_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(GorePayloads.DecalsSyncPayload.TYPE, GorePayloads.SYNC_CODEC);

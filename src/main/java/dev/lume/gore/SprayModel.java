@@ -22,9 +22,9 @@ public final class SprayModel {
 	/** Mist fans out slightly wider than the drops. */
 	public static final float MIST_SPREAD = 0.30f;
 	/** Severity at or above which a hit throws a visible mist. */
-	public static final float MIST_SEVERITY = 0.35f;
+	public static final float MIST_SEVERITY = 0.25f;
 	/** Severity at or above which the wound pumps a jet for several ticks. */
-	public static final float JET_SEVERITY = 0.45f;
+	public static final float JET_SEVERITY = 0.4f;
 
 	/** Log-normal parameters for droplet radius: a few mm drops, many sub-mm. */
 	public static final double DROP_RADIUS_MEDIAN_M = 0.8e-3;
@@ -59,12 +59,12 @@ public final class SprayModel {
 	 * stain-carrying ones: the few that miss every surface and just fall.
 	 */
 	public static int dropCount(float severity) {
-		return Math.round(2 + 5 * severity);
+		return Math.round(3 + 14 * severity);
 	}
 
 	/** Number of mist puffs; light hits below {@link #MIST_SEVERITY} throw none. */
 	public static int mistCount(float severity) {
-		return severity < MIST_SEVERITY ? 0 : Math.round(2 + 4 * severity);
+		return severity < MIST_SEVERITY ? 0 : Math.round(3 + 7 * severity);
 	}
 
 	/**
@@ -78,7 +78,7 @@ public final class SprayModel {
 			return 0;
 		}
 
-		return severity >= 0.8f ? 2 : 1;
+		return severity >= 0.9f ? 3 : severity >= 0.65f ? 2 : 1;
 	}
 
 	/**

@@ -34,15 +34,25 @@ import net.minecraft.world.phys.Vec3;
  * as they age, so a fight progressively soaks the ground around it.
  */
 public final class Bleeding {
-	static final float SPLATTER_SEVERITY = 0.22f;
-	static final int MAX_DECALS_PER_HIT = 18;
+	static final float SPLATTER_SEVERITY = 0.15f;
+	static final int MAX_DECALS_PER_HIT = 28;
+	/** Spatter rays reach this far past the wound, plus up to {@link #RAY_EXTRA}. */
+	static final double RAY_MIN = 2.0;
+	static final double RAY_EXTRA = 3.5;
 	/** Half-angle of the impact cone, in the tangent the jitter is measured in. */
 	static final float SPRAY_SPREAD = 0.6f;
 	/** A heavy hit leaves a run of blood that will later crawl down the wall. */
-	static final float DRIP_SEVERITY = 0.45f;
-	static final float DRIP_CHANCE = 0.55f;
+	static final float DRIP_SEVERITY = 0.35f;
+	static final float DRIP_CHANCE = 0.7f;
 	/** Severity at or above which a hit also tries to pool blood at the feet. */
-	private static final float POOL_SEVERITY = 0.25f;
+	private static final float POOL_SEVERITY = 0.2f;
+	/** A kill's spatter: rays round the body, and how many marks they may leave. */
+	static final int BURST_RAYS = 44;
+	static final int MAX_BURST_DECALS = 40;
+	/** Full-severity sprays a kill throws, evenly round the body. */
+	static final int BURST_SPRAYS = 4;
+	/** Elongation 3, density 2: the long, dense stain a sliding chunk leaves. */
+	static final int SMEAR_VARIANT = 11;
 
 	/**
 	 * Counts hits while {@code gore.seed} is set, so a seeded session can replay
@@ -89,7 +99,7 @@ public final class Bleeding {
 		}
 
 		RandomSource random = hitRandom(victim);
-		float severity = Mth.clamp(damageTaken / Math.max(4.0f, victim.getMaxHealth()), 0.08f, 1.0f);
+		float severity = severity(damageTaken, victim.getMaxHealth());
 		Vec3 impactDir = impactDirection(victim, source);
 		Vec3 hit = hitPoint(victim, source, impactDir);
 		Vec3 bodyHit = hit == null ? null : inBodyFrame(hit, victim.getYRot());
@@ -246,30 +256,31 @@ public final class Bleeding {
 			storedDecals(level, ground.getLocation(), List.of(store.addOrMerge(pool)));
 		}
 
-		// The last spatter, thrown outward and down from the body. Reusing the
-		// normal cone machinery means every landing face gets the right treatment:
-		// walls get tails and drips, floors get spreading pools.
+		// The body bursts: spatter thrown all the way round it, every wall in
+		// reach painted and every floor block splashed, plus chunks of flesh
+		// that land and smear. Walls get tails and drips, floors get pools.
 		Vec3 burst = new Vec3(feet.x, feet.y + victim.getBbHeight() * 0.45, feet.z);
-		List<Decal> placed = collectDecals(level, victim, burst, new Vec3(0.0, -1.0, 0.0), 1.0f, random);
+		List<Decal> placed = burstDecals(level, victim, burst, random);
+		List<Decal> smears = gibSmears(level, victim, burst, random);
+		List<Decal> all = new ArrayList<>(placed);
+		all.addAll(smears);
 
-		if (!placed.isEmpty()) {
+		if (!all.isEmpty()) {
 			DecalStore store = level.getDataStorage().computeIfAbsent(DecalStore.TYPE);
-			List<Decal> stored = new ArrayList<>(placed.size());
-			for (Decal decal : placed) {
+			List<Decal> stored = new ArrayList<>(all.size());
+			for (Decal decal : all) {
 				stored.add(store.addOrMerge(decal));
 			}
-			storedDecals(level, burst, stored, placed);
+			sendDecals(level, burst, stored, placed, smears);
 		}
 
-		// A full burst of droplets and a pair of jets in opposite directions, so
-		// the death reads from any side the player happens to be watching from.
-		spawnParticles(level, burst, new Vec3(0.0, -0.35, 0.0), 1.0f, random);
-
-		for (int i = 0; i < 2; i++) {
-			double angle = random.nextDouble() * Math.PI * 2.0;
-			Vec3 dir = new Vec3(Math.cos(angle), 0.25 + random.nextDouble() * 0.35, Math.sin(angle)).normalize();
-			level.sendParticles(Gore.BLOOD_JET, burst.x, burst.y, burst.z, 0,
-					dir.x * 0.5, dir.y * 0.5, dir.z * 0.5, 1.0);
+		// Sprays thrown four ways round, each a full-severity hit with its own
+		// jets, so the death reads from whichever side the player watches.
+		double turn = random.nextDouble() * Math.PI * 2.0;
+		for (int i = 0; i < BURST_SPRAYS; i++) {
+			double angle = turn + i * (Math.PI * 2.0 / BURST_SPRAYS);
+			Vec3 dir = new Vec3(Math.cos(angle), -0.15 + random.nextDouble() * 0.45, Math.sin(angle)).normalize();
+			spawnParticles(level, burst, dir, 1.0f, random);
 		}
 
 		// The entity is gone: its stains have no body left to render on, and its
@@ -297,13 +308,20 @@ public final class Bleeding {
 	 * future), so clients can fly each droplet from {@code around} to its stain.
 	 */
 	private static void storedDecals(ServerLevel level, Vec3 around, List<Decal> decals, List<Decal> placed) {
+		sendDecals(level, around, decals, placed, List.of());
+	}
+
+	/** As above, plus the gib smears: the client flies a chunk of flesh to each. */
+	private static void sendDecals(ServerLevel level, Vec3 around, List<Decal> decals, List<Decal> placed,
+			List<Decal> gibs) {
 		if (decals.isEmpty()) {
 			return;
 		}
 
 		long now = level.getGameTime();
 		List<Decal> flights = placed.stream().filter(d -> d.born() > now).toList();
-		GorePayloads.DecalsPayload payload = new GorePayloads.DecalsPayload(List.copyOf(decals), around, flights);
+		GorePayloads.DecalsPayload payload = new GorePayloads.DecalsPayload(List.copyOf(decals), around, flights,
+				List.copyOf(gibs));
 		for (ServerPlayer player : PlayerLookup.around(level, around, 96.0)) {
 			ServerPlayNetworking.send(player, payload);
 		}
@@ -378,16 +396,127 @@ public final class Bleeding {
 		}
 	}
 
+	/**
+	 * How hard a hit bleeds, 0.08..1, from the damage taken against the
+	 * victim's health. The square root lifts ordinary hits: a sword blow
+	 * that takes a fifth of a mob's health already splashes the walls, while a
+	 * killing-size blow still saturates at 1.
+	 */
+	static float severity(float damageTaken, float maxHealth) {
+		return Mth.clamp((float) Math.sqrt(damageTaken / Math.max(4.0f, maxHealth)), 0.08f, 1.0f);
+	}
+
+	/**
+	 * The kill's spatter: rays all the way round the body, from a little above
+	 * the horizontal down to steeply at the floor, each a full-severity ray of
+	 * {@link #collectDecals}. Capped at {@link #MAX_BURST_DECALS}.
+	 */
+	static List<Decal> burstDecals(ServerLevel level, LivingEntity victim, Vec3 burst, RandomSource random) {
+		List<Decal> placed = new ArrayList<>();
+		long now = level.getGameTime();
+
+		for (int i = 0; i < BURST_RAYS && placed.size() < MAX_BURST_DECALS; i++) {
+			double angle = (i + random.nextDouble()) * (Math.PI * 2.0 / BURST_RAYS);
+			Vec3 rayDir = new Vec3(Math.cos(angle), -0.8 + random.nextDouble() * 1.1, Math.sin(angle)).normalize();
+			Vec3 from = burst.add(rayDir.scale(0.3));
+			Vec3 to = from.add(rayDir.scale(RAY_MIN + random.nextDouble() * RAY_EXTRA));
+			BlockHitResult hit = level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, victim));
+
+			if (hit.getType() != HitResult.Type.BLOCK) {
+				continue;
+			}
+
+			long arrives = now + SprayModel.flightTicks(burst.distanceTo(hit.getLocation()));
+			Decal decal = decalAt(hit, rayDir, 1.0f, arrives, random);
+
+			if (decal != null) {
+				placed.add(decal);
+
+				if (random.nextFloat() < DRIP_CHANCE && placed.size() < MAX_BURST_DECALS) {
+					Decal drip = dripDecal(hit, 1.0f, arrives + 1, random);
+
+					if (drip != null) {
+						placed.add(drip);
+					}
+				}
+			}
+		}
+
+		return placed;
+	}
+
+	/**
+	 * Chunks of flesh thrown by a kill, one smear each where it lands: a long
+	 * dense streak on the floor pointing the way the chunk was travelling. More
+	 * for a bigger body. A chunk thrown at a wall drops at the wall's foot.
+	 */
+	static List<Decal> gibSmears(ServerLevel level, LivingEntity victim, Vec3 burst, RandomSource random) {
+		int count = gibCount(victim.getBbWidth(), victim.getBbHeight(), random);
+		List<Decal> smears = new ArrayList<>(count);
+		long now = level.getGameTime();
+
+		for (int i = 0; i < count; i++) {
+			double angle = random.nextDouble() * Math.PI * 2.0;
+			Vec3 flat = new Vec3(Math.cos(angle), 0.0, Math.sin(angle));
+			double reach = 0.8 + random.nextDouble() * 2.4;
+			Vec3 target = burst.add(flat.scale(reach));
+			BlockHitResult wall = level.clip(new ClipContext(burst, target, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, victim));
+
+			if (wall.getType() == HitResult.Type.BLOCK) {
+				target = wall.getLocation().subtract(flat.scale(0.25));
+			}
+
+			BlockHitResult ground = level.clip(new ClipContext(target, target.add(0.0, -4.0, 0.0),
+					ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, victim));
+
+			if (ground.getType() != HitResult.Type.BLOCK || ground.getDirection() != Direction.UP) {
+				continue;
+			}
+
+			long lands = now + SprayModel.flightTicks(burst.distanceTo(ground.getLocation())) + 2;
+			smears.add(smearDecal(ground, flat, lands, random));
+		}
+
+		return smears;
+	}
+
+	/** Chunks a kill throws: four for a small creature, up to twelve for a big one. */
+	static int gibCount(float width, float height, RandomSource random) {
+		return Mth.clamp(Math.round(3 + 5 * width * height) + random.nextInt(2), 4, 12);
+	}
+
+	/**
+	 * The mark a chunk leaves where it lands and slides: the longest, densest
+	 * impact stain (elongation 3, density 2), its tail along {@code travel}.
+	 */
+	static Decal smearDecal(BlockHitResult hit, Vec3 travel, long born, RandomSource random) {
+		BlockPos pos = hit.getBlockPos();
+		Direction face = hit.getDirection();
+		float rot = (float) Math.toDegrees(Math.atan2(travel.dot(Decal.axis2(face)), travel.dot(Decal.axis1(face))));
+		float size = 0.46f + random.nextFloat() * 0.04f;
+		float limit = Math.max(0.0f, 0.5f - size * 0.5f);
+		Vec3 rel = hit.getLocation().subtract(Vec3.atCenterOf(pos));
+		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(),
+				(float) Mth.clamp(rel.dot(Decal.axis1(face)), -limit, limit),
+				(float) Mth.clamp(rel.dot(Decal.axis2(face)), -limit, limit),
+				size, rot, SMEAR_VARIANT, born);
+	}
+
+	/** Spatter rays cast for a hit: every ray that meets a face leaves a stain. */
+	static int rayCount(float severity) {
+		return 6 + Math.round(severity * 22.0f);
+	}
+
 	private static List<Decal> collectDecals(ServerLevel level, LivingEntity victim, Vec3 wound, Vec3 dir, float severity, RandomSource random) {
 		List<Decal> placed = new ArrayList<>();
 
 		if (severity >= SPLATTER_SEVERITY) {
-			int rays = 4 + Math.round(severity * 16.0f);
+			int rays = rayCount(severity);
 
 			for (int i = 0; i < rays && placed.size() < MAX_DECALS_PER_HIT; i++) {
 				Vec3 rayDir = SprayModel.coneDirection(dir, random, SPRAY_SPREAD);
 				Vec3 from = wound.add(rayDir.scale(0.3));
-				Vec3 to = from.add(rayDir.scale(1.6 + random.nextDouble() * 2.4));
+				Vec3 to = from.add(rayDir.scale(RAY_MIN + random.nextDouble() * RAY_EXTRA));
 				BlockHitResult hit = level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, victim));
 
 				if (hit.getType() != HitResult.Type.BLOCK) {

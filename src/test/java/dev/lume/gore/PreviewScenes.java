@@ -34,7 +34,7 @@ final class PreviewScenes {
 	record Placement(long launch, Decal decal, Vec3 origin) {
 	}
 
-	static final List<String> NAMES = List.of("spray", "cluster", "drips", "pool", "merge");
+	static final List<String> NAMES = List.of("spray", "kill", "cluster", "drips", "pool", "merge");
 
 	private PreviewScenes() {
 	}
@@ -46,6 +46,7 @@ final class PreviewScenes {
 			case "drips" -> drips();
 			case "pool" -> pools(seed);
 			case "merge" -> merge();
+			case "kill" -> kill(seed);
 			default -> throw new IllegalArgumentException("unknown scene " + name + "; one of " + NAMES);
 		};
 	}
@@ -89,12 +90,12 @@ final class PreviewScenes {
 		RandomSource random = RandomSource.create(seed);
 		List<Placement> out = new ArrayList<>();
 		Vec3 dir = new Vec3(0.15, -0.25, -1.0).normalize();
-		int rays = 4 + Math.round(severity * 16.0f);
+		int rays = Bleeding.rayCount(severity);
 
 		for (int i = 0; i < rays && out.size() < Bleeding.MAX_DECALS_PER_HIT; i++) {
 			Vec3 rayDir = SprayModel.coneDirection(dir, random, Bleeding.SPRAY_SPREAD);
 			Vec3 from = WOUND.add(rayDir.scale(0.3));
-			Vec3 to = from.add(rayDir.scale(1.6 + random.nextDouble() * 2.4));
+			Vec3 to = from.add(rayDir.scale(Bleeding.RAY_MIN + random.nextDouble() * Bleeding.RAY_EXTRA));
 			BlockHitResult hit = clip(from, to);
 
 			if (hit == null) {
@@ -123,6 +124,59 @@ final class PreviewScenes {
 			float poolSize = Math.clamp(0.45f + 0.35f * severity + random.nextFloat() * 0.15f, 0.4f, 0.9f);
 			long arrives = BLOW + SprayModel.flightTicks(WOUND.distanceTo(ground.getLocation()));
 			out.add(new Placement(BLOW, Bleeding.poolDecal(ground, poolSize, arrives, random), WOUND));
+		}
+
+		return out;
+	}
+
+	/**
+	 * A killing blow at {@link #WOUND}: the rays of {@code Bleeding.burstDecals}
+	 * all round the body and the smears of {@code Bleeding.gibSmears}, cast
+	 * against the room's two planes.
+	 */
+	static List<Placement> kill(long seed) {
+		RandomSource random = RandomSource.create(seed);
+		List<Placement> out = new ArrayList<>();
+		Vec3 burst = new Vec3(WOUND.x, 0.9, 1.4);
+
+		for (int i = 0; i < Bleeding.BURST_RAYS && out.size() < Bleeding.MAX_BURST_DECALS; i++) {
+			double angle = (i + random.nextDouble()) * (Math.PI * 2.0 / Bleeding.BURST_RAYS);
+			Vec3 rayDir = new Vec3(Math.cos(angle), -0.8 + random.nextDouble() * 1.1, Math.sin(angle)).normalize();
+			Vec3 from = burst.add(rayDir.scale(0.3));
+			BlockHitResult hit = clip(from, from.add(rayDir.scale(Bleeding.RAY_MIN + random.nextDouble() * Bleeding.RAY_EXTRA)));
+
+			if (hit == null) {
+				continue;
+			}
+
+			long arrives = BLOW + SprayModel.flightTicks(burst.distanceTo(hit.getLocation()));
+			Decal decal = Bleeding.decalAt(hit, rayDir, 1.0f, arrives, random);
+
+			if (decal != null) {
+				out.add(new Placement(BLOW, decal, burst));
+				if (random.nextFloat() < Bleeding.DRIP_CHANCE && out.size() < Bleeding.MAX_BURST_DECALS) {
+					Decal drip = Bleeding.dripDecal(hit, 1.0f, arrives + 1, random);
+					if (drip != null) {
+						out.add(new Placement(BLOW, drip, null));
+					}
+				}
+			}
+		}
+
+		int gibs = Bleeding.gibCount(0.9f, 1.4f, random);
+		for (int i = 0; i < gibs; i++) {
+			double angle = random.nextDouble() * Math.PI * 2.0;
+			Vec3 flat = new Vec3(Math.cos(angle), 0.0, Math.sin(angle));
+			Vec3 target = burst.add(flat.scale(0.8 + random.nextDouble() * 2.4));
+			BlockHitResult wall = clip(burst, target);
+			if (wall != null && wall.getDirection() == Direction.SOUTH) {
+				target = wall.getLocation().subtract(flat.scale(0.25));
+			}
+			BlockHitResult ground = clip(target, target.add(0.0, -4.0, 0.0));
+			if (ground != null && ground.getDirection() == Direction.UP) {
+				long lands = BLOW + SprayModel.flightTicks(burst.distanceTo(ground.getLocation())) + 2;
+				out.add(new Placement(BLOW, Bleeding.smearDecal(ground, flat, lands, random), burst));
+			}
 		}
 
 		return out;

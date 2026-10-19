@@ -84,6 +84,11 @@ public class BloodDropParticle extends SingleQuadParticle {
 	 * to {@code sprites.get(i * (n - 1) / j)}, so with three sprites {@code get(1, 2)}
 	 * is the streak — the one to draw while a droplet is in fast flight.
 	 */
+	/** The drop sprites, once the provider has registered; null before. */
+	static SpriteSet sprites() {
+		return providerSprites;
+	}
+
 	private static TextureAtlasSprite streakSpriteOf(SpriteSet set) {
 		return set.get(1, 2);
 	}

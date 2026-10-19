@@ -28,9 +28,9 @@ public final class BloodField {
 	/** Visible radius / kernel support radius for one isolated circle at {@link #THRESHOLD}. */
 	private static final float ISO = (float) Math.sqrt(1.0 - Math.cbrt(THRESHOLD));
 	/** Fresh blood, before the per-stain jitter and the drying ramp multiply it. */
-	private static final int WET_R = 150;
-	private static final int WET_G = 10;
-	private static final int WET_B = 12;
+	private static final int WET_R = 190;
+	private static final int WET_G = 8;
+	private static final int WET_B = 10;
 	/** Ticks over which a fresh splat wets out to its full footprint. */
 	private static final double WET_SPREAD_TICKS = 30.0;
 
@@ -242,8 +242,15 @@ public final class BloodField {
 				float edge = 1.0f - Math.min(1.0f, (field - threshold) / 0.15f);
 				float shade = (1.0f - 0.45f * thick) * (1.0f - 0.35f * dry * edge);
 				float alpha = (0.78f + 0.22f * thick) * fade;
+				// Wet, thick blood is glossy: a sheen where the film bulges (a
+				// noise ridge inside the body, never at the thin edge) that dulls
+				// away as it dries.
+				float ridge = Math.max(0.0f, noise(u * 1.7 + 11.3, v * 1.7 - 4.1) - 0.62f) / 0.38f;
+				float gloss = ridge * thick * (1.0f - dry) * (1.0f - edge);
 				out[j * RES + i] = ARGB.color(Math.round(255 * alpha),
-						Math.round(r * shade), Math.round(g * shade), Math.round(b * shade));
+						Math.min(255, Math.round(r * shade + 90.0f * gloss)),
+						Math.min(255, Math.round(g * shade + 40.0f * gloss)),
+						Math.min(255, Math.round(b * shade + 40.0f * gloss)));
 			}
 		}
 

@@ -20,7 +20,7 @@ class SprayModelTest {
 	void dropVelocities_lieInsideCone_andHaveImpactSpeed() {
 		Vec3 dir = new Vec3(1, 0, 0);
 		List<Vec3> v = SprayModel.dropVelocities(dir, 0.6f, r);
-		assertEquals(5, v.size());
+		assertEquals(11, v.size());
 		double meanSpeed = 0;
 		for (Vec3 each : v) {
 			double angle = Math.toDegrees(Math.acos(each.normalize().dot(dir)));
@@ -34,9 +34,9 @@ class SprayModelTest {
 
 	@Test
 	void counts_atMinimumSeverity() {
-		assertEquals(2, SprayModel.dropCount(0.08f));
+		assertEquals(4, SprayModel.dropCount(0.08f));
 		assertEquals(0, SprayModel.mistCount(0.08f));
-		assertEquals(4, SprayModel.mistCount(0.6f));
+		assertEquals(7, SprayModel.mistCount(0.6f));
 	}
 
 	@Test
@@ -51,7 +51,7 @@ class SprayModelTest {
 		assertEquals(0, SprayModel.jetCount(0.2f), "a light hit must not turn into a fountain");
 		assertEquals(0, SprayModel.jetCount(SprayModel.JET_SEVERITY - 0.01f));
 		assertEquals(1, SprayModel.jetCount(SprayModel.JET_SEVERITY));
-		assertEquals(2, SprayModel.jetCount(1.0f), "a killing blow empties the wound from both ends");
+		assertEquals(3, SprayModel.jetCount(1.0f), "a killing blow empties the wound in several streams");
 	}
 
 	@Test

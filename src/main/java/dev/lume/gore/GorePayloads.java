@@ -18,10 +18,17 @@ public final class GorePayloads {
 	 * future, at the tick its droplet lands, and the client flies a visible
 	 * droplet from {@code origin} (the wound) to it over that time, so the stain
 	 * appears where and when the droplet hits. Empty for non-flying marks.
+	 * {@code gibs} are the smears left by chunks of flesh thrown by a kill: the
+	 * client flies a gib from {@code origin} to each, landing on its born tick.
 	 */
-	public record DecalsPayload(List<Decal> decals, Vec3 origin, List<Decal> flights) implements CustomPacketPayload {
+	public record DecalsPayload(List<Decal> decals, Vec3 origin, List<Decal> flights, List<Decal> gibs)
+			implements CustomPacketPayload {
 		public DecalsPayload(List<Decal> decals) {
-			this(decals, Vec3.ZERO, List.of());
+			this(decals, Vec3.ZERO, List.of(), List.of());
+		}
+
+		public DecalsPayload(List<Decal> decals, Vec3 origin, List<Decal> flights) {
+			this(decals, origin, flights, List.of());
 		}
 
 		public static final CustomPacketPayload.Type<DecalsPayload> TYPE = new CustomPacketPayload.Type<>(Gore.id("decals"));
@@ -61,6 +68,7 @@ public final class GorePayloads {
 			StreamCodec.composite(ByteBufCodecs.DOUBLE, Vec3::x, ByteBufCodecs.DOUBLE, Vec3::y,
 					ByteBufCodecs.DOUBLE, Vec3::z, Vec3::new), DecalsPayload::origin,
 			ByteBufCodecs.<ByteBuf, Decal>list().apply(Decal.STREAM_CODEC), DecalsPayload::flights,
+			ByteBufCodecs.<ByteBuf, Decal>list().apply(Decal.STREAM_CODEC), DecalsPayload::gibs,
 			DecalsPayload::new);
 
 	public static final StreamCodec<ByteBuf, DecalsGonePayload> GONE_CODEC = StreamCodec.composite(

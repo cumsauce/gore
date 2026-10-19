@@ -51,10 +51,10 @@ public final class ParticleLook {
 	/** Cap on the elongation: a streak is never more than three times as long as it is wide. */
 	public static final float STRETCH_MAX = 3.0f;
 
-	/** Wet blood base, matching the atlas {@code BASE} (120, 14, 14) normalised to 0..1. */
-	private static final float BASE_R = 120f / 255f;
-	private static final float BASE_G = 14f / 255f;
-	private static final float BASE_B = 14f / 255f;
+	/** Wet blood base (165, 10, 10) normalised to 0..1: fresh arterial red, close to the walls' wet blood. */
+	private static final float BASE_R = 165f / 255f;
+	private static final float BASE_G = 10f / 255f;
+	private static final float BASE_B = 10f / 255f;
 
 	/** Small droplets are thin and translucent; big ones are optically thick. */
 	private static final float MIN_ALPHA = 0.55f;

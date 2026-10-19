@@ -56,6 +56,7 @@ public class GoreClient implements ClientModInitializer {
 		registry.register(Gore.BLOOD_MIST, BloodMistParticle.Provider::new);
 		registry.register(Gore.BLOOD_DROP, BloodDropParticle.Provider::new);
 		registry.register(Gore.BLOOD_JET, BloodJetParticle.Provider::new);
+		registry.register(Gore.BLOOD_GIB, BloodGibParticle.Provider::new);
 
 		ClientLifecycleEvents.CLIENT_STARTED.register(client ->
 				client.getTextureManager().registerAndLoad(BLOOD_ATLAS, new SimpleTexture(BLOOD_ATLAS)));
@@ -125,11 +126,15 @@ public class GoreClient implements ClientModInitializer {
 	private static void launchFlights(GorePayloads.DecalsPayload payload) {
 		ClientLevel level = Minecraft.getInstance().level;
 
-		if (level == null || payload.flights().isEmpty()) {
+		if (level == null) {
 			return;
 		}
 
 		long now = level.getGameTime();
+
+		for (Decal smear : payload.gibs()) {
+			BloodGibParticle.fly(level, payload.origin(), smear, (int) (smear.born() - now));
+		}
 
 		for (Decal decal : payload.flights()) {
 			if (DecalMerge.isDrip(decal)) {

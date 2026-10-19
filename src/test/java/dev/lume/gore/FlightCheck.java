@@ -92,6 +92,9 @@ public final class FlightCheck {
 			}
 		}
 
+		if (d.born() <= p.launch()) {
+			problems.add("born at " + d.born() + ", no later than its launch at " + p.launch());
+		}
 		long arrive = p.launch() + ticks;
 		if (arrive != d.born()) {
 			problems.add("lands at " + arrive + ", stain born " + d.born());

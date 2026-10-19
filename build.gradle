@@ -135,6 +135,20 @@ inspectTask("flightCheck", "dev.lume.gore.FlightCheck",
 		["seed", "severity", "out"],
 		"Flies every stain droplet of a spray and checks it lands on its stain on its born tick.")
 
+// The client game test writes a particle trace (gore.trace above); fail the run
+// if tools/trace.py flags anything in it.
+def checkParticleTrace = tasks.register("checkParticleTrace", Exec) {
+	group = "inspection"
+	description = "Runs tools/trace.py over the client game test's particle trace."
+	def trace = providers.gradleProperty('gore.runDir').map { "${it}/clientGameTest/gore-trace.jsonl" }
+			.orElse("${System.getProperty('user.home')}/gore-run/clientGameTest/gore-trace.jsonl")
+	commandLine "python3", "tools/trace.py", trace.get(), "build/inspect/trace"
+}
+
+tasks.matching { it.name == "runClientGameTest" }.configureEach {
+	finalizedBy checkParticleTrace
+}
+
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
 }

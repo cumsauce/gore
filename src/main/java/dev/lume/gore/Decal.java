@@ -66,4 +66,16 @@ public record Decal(int x, int y, int z, int face, float u, float v, float size,
 			case EAST -> new Vec3(0.0, 0.0, 1.0);
 		};
 	}
+
+	/**
+	 * The world point where this decal's droplet lands: the hit point on the
+	 * face, lifted a hair off it along the normal.
+	 */
+	public static Vec3 surfacePoint(Decal d) {
+		Direction face = Direction.from3DDataValue(d.face());
+		return new Vec3(d.x() + 0.5, d.y() + 0.5, d.z() + 0.5)
+				.add(new Vec3(face.getStepX(), face.getStepY(), face.getStepZ()).scale(0.51))
+				.add(axis1(face).scale(d.u()))
+				.add(axis2(face).scale(d.v()));
+	}
 }

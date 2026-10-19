@@ -29,6 +29,8 @@ import org.joml.Vector3fc;
  * so nothing floats on the surface.
  */
 public class BloodDropParticle extends SingleQuadParticle {
+	/** Trace id (see ParticleTrace); 0 when tracing is off. */
+	private final int traceId = ParticleTrace.nextId();
 	private final SpriteSet sprites;
 	private final double radiusM;
 	/** Splash offspring: they inherit the physics but must not splash again. */
@@ -129,6 +131,8 @@ public class BloodDropParticle extends SingleQuadParticle {
 
 	@Override
 	public void tick() {
+		ParticleTrace.record(this.traceId, this.flightFrom != null ? "flight" : this.micro ? "micro" : "drop", this.level.getGameTime(), this.age, this.x, this.y, this.z,
+				this.xo, this.yo, this.zo, this.xd, this.yd, this.zd, this.alpha, this.quadSize);
 		// Vanilla tick() applies its own gravity and friction; this droplet is driven
 		// entirely by Ballistics, so super.tick() must never run (it would double-apply).
 		// super.tick() is what normally advances the interpolation origin; without
@@ -190,10 +194,9 @@ public class BloodDropParticle extends SingleQuadParticle {
 
 		BloodDropParticle drop = new BloodDropParticle(level, from.x, from.y, from.z, 0, 0, 0, providerSprites, false);
 		int t = Math.max(1, ticks);
-		Vec3 gravity = new Vec3(0.0, -Ballistics.GRAVITY, 0.0);
 		drop.flightFrom = from;
 		drop.flightTicks = t;
-		drop.flightV0 = to.subtract(from).subtract(gravity.scale(0.5 * t * t)).scale(1.0 / t);
+		drop.flightV0 = Ballistics.arcVelocity(from, to, t);
 		drop.xd = drop.flightV0.x;
 		drop.yd = drop.flightV0.y;
 		drop.zd = drop.flightV0.z;
@@ -207,7 +210,7 @@ public class BloodDropParticle extends SingleQuadParticle {
 	private void tickFlight() {
 		this.age++;
 		double t = Math.min(this.age, this.flightTicks);
-		Vec3 p = this.flightFrom.add(this.flightV0.scale(t)).add(0.0, -0.5 * Ballistics.GRAVITY * t * t, 0.0);
+		Vec3 p = Ballistics.arcPoint(this.flightFrom, this.flightV0, t);
 		// Velocity only steers the streak orientation; the position is exact.
 		this.xd = this.flightV0.x;
 		this.yd = this.flightV0.y - Ballistics.GRAVITY * t;

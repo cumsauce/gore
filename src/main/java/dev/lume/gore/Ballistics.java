@@ -39,4 +39,18 @@ public final class Ballistics {
 		double c = STOKES / (radiusM * radiusM);
 		return v.scale(Math.exp(-c));
 	}
+
+	/**
+	 * Launch velocity of the exact gravity arc (no drag) that leaves {@code from}
+	 * and is at {@code to} after {@code ticks} ticks. Stain-carrying droplets fly
+	 * this arc so they land on the tick their stain is born.
+	 */
+	public static Vec3 arcVelocity(Vec3 from, Vec3 to, int ticks) {
+		return to.subtract(from).add(0.0, 0.5 * GRAVITY * ticks * ticks, 0.0).scale(1.0 / ticks);
+	}
+
+	/** Position on the arc launched from {@code from} at {@code v0}, {@code t} ticks later. */
+	public static Vec3 arcPoint(Vec3 from, Vec3 v0, double t) {
+		return from.add(v0.scale(t)).add(0.0, -0.5 * GRAVITY * t * t, 0.0);
+	}
 }

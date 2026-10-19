@@ -28,6 +28,8 @@ import net.minecraft.world.phys.Vec3;
  * from the impact direction.
  */
 public class BloodJetParticle extends SingleQuadParticle {
+	/** Trace id (see ParticleTrace); 0 when tracing is off. */
+	private final int traceId = ParticleTrace.nextId();
 	/** Emission cone radius, in blocks of lateral velocity per unit of speed. */
 	private static final double SPREAD = 0.16;
 
@@ -59,6 +61,8 @@ public class BloodJetParticle extends SingleQuadParticle {
 
 	@Override
 	public void tick() {
+		ParticleTrace.record(this.traceId, "jet", this.level.getGameTime(), this.age, this.x, this.y, this.z,
+				this.xo, this.yo, this.zo, this.xd, this.yd, this.zd, this.alpha, this.quadSize);
 		// Not super.tick(): this emitter has no vanilla physics and must not be
 		// dragged by gravity or friction.
 		// super.tick() is what normally advances the interpolation origin; without

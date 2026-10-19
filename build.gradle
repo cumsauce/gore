@@ -57,6 +57,8 @@ loom {
 			if (name == "clientGameTest") {
 				vmArg "-Dgore.seed=20261016"
 				vmArg "-Dgore.dryScale=0.02"
+				// Per-tick particle trace for tools/trace.py (see ParticleTrace).
+				vmArg "-Dgore.trace=${localRunDir(name)}/gore-trace.jsonl"
 			}
 		}
 	}
@@ -105,6 +107,33 @@ fabricApi {
 		enableClientGameTests = true
 	}
 }
+
+// Fast inspection tools: plain Java mains in the test source set that need no
+// game, no window and no GL (see README, Development). Properties pass through
+// as -P<name>=<value>, e.g. ./gradlew previewBlood -Pscene=drips -Poverlay.
+def inspectTask = { String taskName, String mainName, List<String> props, String text ->
+	tasks.register(taskName, JavaExec) {
+		group = "inspection"
+		description = text
+		dependsOn tasks.named("testClasses")
+		classpath = sourceSets.test.runtimeClasspath
+		mainClass = mainName
+		workingDir = projectDir
+		props.each { p ->
+			if (project.hasProperty(p)) {
+				def value = project.property(p).toString()
+				systemProperty p, value.isEmpty() ? "true" : value
+			}
+		}
+	}
+}
+
+inspectTask("previewBlood", "dev.lume.gore.BloodPreview",
+		["scene", "from", "to", "step", "scale", "seed", "overlay", "out", "gore.dryScale"],
+		"Bakes a blood scene with BloodField over a range of ticks into PNGs, an APNG and a contact sheet.")
+inspectTask("flightCheck", "dev.lume.gore.FlightCheck",
+		["seed", "severity", "out"],
+		"Flies every stain droplet of a spray and checks it lands on its stain on its born tick.")
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25

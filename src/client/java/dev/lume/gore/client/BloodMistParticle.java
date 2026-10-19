@@ -22,6 +22,8 @@ import net.minecraft.util.RandomSource;
  * noise sprites do not read as three identical squares.
  */
 public class BloodMistParticle extends SingleQuadParticle {
+	/** Trace id (see ParticleTrace); 0 when tracing is off. */
+	private final int traceId = ParticleTrace.nextId();
 	/** Per-tick velocity retention: the throw is spent in about four ticks. */
 	private static final double DRAG = 0.78;
 
@@ -63,6 +65,8 @@ public class BloodMistParticle extends SingleQuadParticle {
 
 	@Override
 	public void tick() {
+		ParticleTrace.record(this.traceId, "mist", this.level.getGameTime(), this.age, this.x, this.y, this.z,
+				this.xo, this.yo, this.zo, this.xd, this.yd, this.zd, this.alpha, this.quadSize);
 		// Not super.tick(): vanilla gravity and friction are wrong for a cloud.
 		this.xo = this.x;
 		this.yo = this.y;

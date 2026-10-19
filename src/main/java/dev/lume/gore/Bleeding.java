@@ -34,13 +34,13 @@ import net.minecraft.world.phys.Vec3;
  * as they age, so a fight progressively soaks the ground around it.
  */
 public final class Bleeding {
-	private static final float SPLATTER_SEVERITY = 0.22f;
-	private static final int MAX_DECALS_PER_HIT = 18;
+	static final float SPLATTER_SEVERITY = 0.22f;
+	static final int MAX_DECALS_PER_HIT = 18;
 	/** Half-angle of the impact cone, in the tangent the jitter is measured in. */
-	private static final float SPRAY_SPREAD = 0.6f;
+	static final float SPRAY_SPREAD = 0.6f;
 	/** A heavy hit leaves a run of blood that will later crawl down the wall. */
-	private static final float DRIP_SEVERITY = 0.45f;
-	private static final float DRIP_CHANCE = 0.55f;
+	static final float DRIP_SEVERITY = 0.45f;
+	static final float DRIP_CHANCE = 0.55f;
 	/** Severity at or above which a hit also tries to pool blood at the feet. */
 	private static final float POOL_SEVERITY = 0.25f;
 
@@ -439,7 +439,7 @@ public final class Bleeding {
 		return placed;
 	}
 
-	private static Decal decalAt(BlockHitResult hit, Vec3 travelDir, float severity, long born, RandomSource random) {
+	static Decal decalAt(BlockHitResult hit, Vec3 travelDir, float severity, long born, RandomSource random) {
 		BlockPos pos = hit.getBlockPos();
 		Direction face = hit.getDirection();
 
@@ -489,7 +489,7 @@ public final class Bleeding {
 		return new Decal(pos.getX(), pos.getY(), pos.getZ(), face.get3DDataValue(), u, v, size, rot, variant, born);
 	}
 
-	private static Decal poolDecal(BlockHitResult hit, float poolSize, long born, RandomSource random) {
+	static Decal poolDecal(BlockHitResult hit, float poolSize, long born, RandomSource random) {
 		BlockPos pos = hit.getBlockPos();
 		Direction face = hit.getDirection();
 

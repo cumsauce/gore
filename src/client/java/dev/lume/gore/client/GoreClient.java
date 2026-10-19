@@ -136,11 +136,7 @@ public class GoreClient implements ClientModInitializer {
 				continue; // a drip rides on the splat whose droplet already flies there
 			}
 
-			Direction face = Direction.from3DDataValue(decal.face());
-			Vec3 to = Vec3.atCenterOf(new BlockPos(decal.x(), decal.y(), decal.z()))
-					.add(new Vec3(face.getStepX(), face.getStepY(), face.getStepZ()).scale(0.51))
-					.add(Decal.axis1(face).scale(decal.u()))
-					.add(Decal.axis2(face).scale(decal.v()));
+			Vec3 to = Decal.surfacePoint(decal);
 			BloodDropParticle.fly(level, payload.origin(), to, (int) (decal.born() - now), decal.size());
 		}
 	}

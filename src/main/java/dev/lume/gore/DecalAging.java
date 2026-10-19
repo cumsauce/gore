@@ -69,6 +69,18 @@ public final class DecalAging {
 
 			for (int i = cursor; i < end; i++) {
 				Decal decal = decals.get(i);
+				BlockPos pos = new BlockPos(decal.x(), decal.y(), decal.z());
+
+				// The block the stain was painted on is gone (mined, exploded,
+				// pushed). Clients already stop drawing that face; a stain that
+				// stays on it can go, but one that spills onto the neighbours
+				// stays, or their part of it would vanish too.
+				if (level.isLoaded(pos) && level.getBlockState(pos).isAir() && BloodField.withinOwnFace(decal)) {
+					gone.add(decal);
+					RAIN.remove(decal);
+					SEEN.remove(decal);
+					continue;
+				}
 
 				if (decal.born() == 0L) {
 					// Legacy stamp: age unknown, so no fading or washing.

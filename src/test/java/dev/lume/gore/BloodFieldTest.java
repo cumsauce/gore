@@ -81,6 +81,16 @@ class BloodFieldTest {
 		assertEquals(0, BloodField.kernels(old, now).size());
 	}
 
+	@Test
+	void withinOwnFace_onlyForStainsThatDoNotSpill() {
+		// A small round stain in the middle of its face: safe to drop with its block.
+		assertTrue(BloodField.withinOwnFace(new Decal(0, 0, 0, SOUTH, 0f, 0f, 0.25f, 0f, 0, 1L)));
+		// The same stain at the face's edge reaches the next block: it must stay.
+		assertFalse(BloodField.withinOwnFace(new Decal(0, 0, 0, SOUTH, 0.45f, 0f, 0.25f, 0f, 0, 1L)));
+		// A long drip runs down into the block below.
+		assertFalse(BloodField.withinOwnFace(new Decal(0, 0, 0, SOUTH, 0f, -0.2f, 0.7f, 90f, 14, 1L)));
+	}
+
 	private static int width(boolean[] on, int row) {
 		int n = 0;
 		for (int i = 0; i < RES; i++) {

@@ -86,6 +86,8 @@ public final class DecalRenderer {
 		final List<Decal> decals = new ArrayList<>();
 		int slot = -1;
 		boolean visible;
+		/** Whether the block face was there at the last check; re-checked every frame. */
+		boolean surface = true;
 		long nextBake = Long.MIN_VALUE;
 
 		Face(FaceKey key) {
@@ -170,7 +172,17 @@ public final class DecalRenderer {
 		poseStack.translate(-camera.x, -camera.y, -camera.z);
 
 		for (Face face : FACES.values()) {
-			if (face.visible && face.slot >= 0) {
+			// Checked every frame, not only on a bake: a broken block's blood must
+			// go the frame the block does, and a re-placed one bakes again at once.
+			// Neighbouring faces are separate entries, so they keep their blood.
+			boolean surface = hasSurface(level, face.key, Direction.from3DDataValue(face.key.face()));
+
+			if (surface != face.surface) {
+				face.surface = surface;
+				face.nextBake = Long.MIN_VALUE;
+			}
+
+			if (surface && face.visible && face.slot >= 0) {
 				submit(context, poseStack, face, level);
 			}
 		}

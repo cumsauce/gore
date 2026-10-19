@@ -332,4 +332,32 @@ public final class BloodField {
 		}
 		return age < WET_SPREAD_TICKS * 4;
 	}
+
+	/**
+	 * True when every part of the decal, fully grown, stays on its own block
+	 * face; false when it spills onto neighbouring blocks of the same wall.
+	 * Used to decide whether a decal can be dropped when its block is broken:
+	 * one that spills still paints the neighbours, so it has to stay.
+	 */
+	public static boolean withinOwnFace(Decal d) {
+		Direction face = Direction.from3DDataValue(d.face());
+		int pu = planeCoord(d.x(), d.y(), d.z(), Decal.axis1(face));
+		int pv = planeCoord(d.x(), d.y(), d.z(), Decal.axis2(face));
+		Decal settled = d.born() == 0L ? d
+				: new Decal(d.x(), d.y(), d.z(), d.face(), d.u(), d.v(), d.size(), d.rot(), d.variant(), 1L);
+		long grown = 1L + Flow.T_TICKS + 1;
+
+		for (Kernel k : kernels(settled, grown)) {
+			// The visible edge, not the kernel's whole support (which is ~1.8x
+			// wider), with room for the iso-level noise and for neighbours'
+			// fields summing a little further out.
+			double reach = k.support() * ISO * 1.25;
+			if (Math.min(k.au(), k.bu()) - reach < pu - 0.5 || Math.max(k.au(), k.bu()) + reach > pu + 0.5
+					|| Math.min(k.av(), k.bv()) - reach < pv - 0.5 || Math.max(k.av(), k.bv()) + reach > pv + 0.5) {
+				return false;
+			}
+		}
+
+		return true;
+	}
 }

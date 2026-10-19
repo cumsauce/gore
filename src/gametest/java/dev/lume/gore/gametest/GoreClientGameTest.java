@@ -623,5 +623,30 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.takeScreenshot(String.format("seq-drip-%03d", i));
 		}
 		context.runOnClient(mc -> DecalManager.clear());
+
+		// 4. Broken block: a stain in the middle of one wall block, a pool-sized
+		// splat straddling the seam into its neighbour, a drip running down.
+		// Breaking the middle block must take its blood with it (nothing left
+		// hanging in the air) while the neighbours keep their part.
+		singleplayer.getServer().runCommand(
+				"fill " + (fx - 4) + " " + fy + " " + (fz - 4) + " " + (fx + 4) + " " + (fy + 5) + " " + (fz - 4) + " stone");
+		context.runOnClient(mc -> {
+			int n = Direction.SOUTH.get3DDataValue();
+			long born = mc.level.getGameTime() - 200;
+			DecalManager.sync(mc.level.dimension().identifier(), List.of(
+					new Decal(fx, fy + 2, fz - 4, n, 0f, 0f, 0.35f, 0f, 0, born),
+					new Decal(fx, fy + 2, fz - 4, n, 0.42f, 0.1f, 0.5f, 0f, 1, born),
+					new Decal(fx, fy + 2, fz - 4, n, -0.2f, -0.2f, 0.8f, 90f, 14, born)));
+			mc.player.setPos(fx + 0.5, fy, fz - 1.0);
+			mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(fx + 0.5, fy + 2.0, fz - 3.5));
+		});
+		context.waitTicks(5);
+		context.takeScreenshot("seq-break-000");
+		singleplayer.getServer().runCommand("setblock " + fx + " " + (fy + 2) + " " + (fz - 4) + " air");
+		for (int i = 1; i < 4; i++) {
+			context.waitTicks(1);
+			context.takeScreenshot(String.format("seq-break-%03d", i));
+		}
+		context.runOnClient(mc -> DecalManager.clear());
 	}
 }

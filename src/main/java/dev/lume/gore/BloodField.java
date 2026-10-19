@@ -98,7 +98,7 @@ public final class BloodField {
 
 		if (DecalMerge.isDrip(d)) {
 			// tail points up along the wall; the run flows the other way.
-			float f = Flow.length(age);
+			float f = dripStretch(d, now);
 			double len = d.size() * f * 0.95;
 			double width = d.size() * 0.075 * Flow.widthScale(f);
 			double eu = cu - tu * len;
@@ -165,6 +165,20 @@ public final class BloodField {
 	 */
 	public static boolean bake(List<Kernel> kernels, int pu, int pv, int[] out) {
 		boolean any = false;
+		// Only kernels whose support reaches this face can touch a texel: cull
+		// the rest once per face instead of once per texel.
+		Kernel[] near = new Kernel[kernels.size()];
+		int count = 0;
+		for (Kernel k : kernels) {
+			if (k.maxU() >= pu - 0.5 && k.minU() <= pu + 0.5 && k.maxV() >= pv - 0.5 && k.minV() <= pv + 0.5) {
+				near[count++] = k;
+			}
+		}
+
+		if (count == 0) {
+			java.util.Arrays.fill(out, 0, RES * RES, 0);
+			return false;
+		}
 
 		for (int j = 0; j < RES; j++) {
 			double v = pv + 0.5 - (j + 0.5) / RES;
@@ -178,7 +192,8 @@ public final class BloodField {
 				float fade = 0.0f;
 				float dry = 0.0f;
 
-				for (Kernel k : kernels) {
+				for (int n = 0; n < count; n++) {
+					Kernel k = near[n];
 					if (u < k.minU() || u > k.maxU() || v < k.minV() || v > k.maxV()) {
 						continue;
 					}
@@ -197,6 +212,12 @@ public final class BloodField {
 					b += w * ARGB.blue(k.rgb());
 					fade += w * k.fade();
 					dry += w * k.dry();
+				}
+
+				// No field can beat the lowest wobbled threshold: skip the noise.
+				if (field <= THRESHOLD * 0.8f) {
+					out[j * RES + i] = 0;
+					continue;
 				}
 
 				// A wobble in the iso-level gives the edge the ragged look of
@@ -274,6 +295,23 @@ public final class BloodField {
 	}
 
 	/**
+	 * How far a drip has stretched at {@code now}, 0..1 ({@link Flow#length}).
+	 * A drip fed by a merged droplet restarts its run when that droplet lands,
+	 * but never retracts: it keeps the length it had reached and the new run
+	 * takes over once it is longer, so the merge shows no jump.
+	 */
+	public static float dripStretch(Decal d, long now) {
+		if (d.born() == 0L) {
+			return 1.0f;
+		}
+		float f = Flow.length(now - d.born());
+		if (d.fed() != 0L && now >= d.fed()) {
+			f = Math.max(Flow.length(d.fed() - d.born()), Flow.length(now - d.fed()));
+		}
+		return f;
+	}
+
+	/**
 	 * True while the decal's shape is still moving (a drip running, a pool or
 	 * splat spreading), so its faces need re-baking every tick rather than on
 	 * the slow drying clock.
@@ -287,7 +325,7 @@ public final class BloodField {
 			return true; // in flight: bake every tick so it appears on arrival
 		}
 		if (DecalMerge.isDrip(d)) {
-			return age < Flow.T_TICKS;
+			return age < Flow.T_TICKS || (d.fed() != 0L && now - d.fed() < Flow.T_TICKS);
 		}
 		if (DecalMerge.isPool(d)) {
 			return age < Flow.SPREAD_TICKS;

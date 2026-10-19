@@ -45,6 +45,12 @@ public class BloodJetParticle extends SingleQuadParticle {
 			d = new Vec3(0.0, -1.0, 0.0);
 		}
 		this.dir = d.normalize();
+		// The emitter stays put (tick never moves it); xd/yd/zd carry the
+		// stream's current velocity so the particle trace shows the jet rather
+		// than zero. See tick().
+		this.xd = vx;
+		this.yd = vy;
+		this.zd = vz;
 		// A few ticks: long enough for the stream to read, short enough that a
 		// mob does not keep bleeding into the air forever.
 		this.lifetime = 9 + this.random.nextInt(6);
@@ -81,6 +87,9 @@ public class BloodJetParticle extends SingleQuadParticle {
 		float life = this.age / (float) this.lifetime;
 		// The pressure behind the jet drops as the wound empties.
 		double speed = (0.25 + this.random.nextDouble() * 0.15) * (1.0 - 0.65 * life);
+		this.xd = this.dir.x * speed;
+		this.yd = this.dir.y * speed;
+		this.zd = this.dir.z * speed;
 
 		// Two axes spanning the plane perpendicular to the jet.
 		Vec3 helper = Math.abs(this.dir.y) < 0.9 ? new Vec3(0.0, 1.0, 0.0) : new Vec3(1.0, 0.0, 0.0);

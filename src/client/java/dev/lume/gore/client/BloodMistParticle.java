@@ -13,8 +13,10 @@ import net.minecraft.util.RandomSource;
 /**
  * A micrometre mist of blood ejected by a hard impact. Stokes drag stops it within a
  * couple of ticks inside ~0.3 blocks; it then hangs where it was thrown, drifts on a
- * random walk, and evaporates in under 1.5 seconds (alpha decays exponentially and the
- * sprite advances as it spreads).
+ * random walk, and evaporates over two to three seconds (alpha decays exponentially as
+ * it spreads). That is deliberately far longer than a drop's ~8 ticks: drops fly and
+ * land, while the cloud has to hang long enough to read as volume
+ * ({@link ParticleLook#MIST_LIFETIME_FLOOR}).
  *
  * <p>Deliberately does <em>not</em> stretch along its velocity: a droplet smears because
  * it crosses its own width in a frame, whereas mist is a cloud whose droplets have

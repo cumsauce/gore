@@ -1,5 +1,6 @@
 package dev.lume.gore;
 
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -20,6 +21,8 @@ final class PreviewImage {
 	final int w;
 	final int h;
 	final int[] rgb;
+	/** This frame's deflated scanlines, computed once and shared by every writer. */
+	private byte[] idat;
 
 	PreviewImage(int w, int h, int fill) {
 		this.w = w;
@@ -46,6 +49,16 @@ final class PreviewImage {
 	}
 
 	void fillRect(int x0, int y0, int x1, int y1, int argb) {
+		if (argb >>> 24 == 255) {
+			// Opaque: no blending, just store the colour row by row.
+			int c = argb & 0xffffff;
+			int xa = Math.max(0, x0);
+			int xb = Math.min(w, x1);
+			for (int y = Math.max(0, y0); y < Math.min(h, y1) && xa < xb; y++) {
+				java.util.Arrays.fill(rgb, y * w + xa, y * w + xb, c);
+			}
+			return;
+		}
 		for (int y = y0; y < y1; y++) {
 			for (int x = x0; x < x1; x++) {
 				blend(x, y, argb);
@@ -95,16 +108,18 @@ final class PreviewImage {
 	}
 
 	void write(Path path) throws IOException {
-		try (OutputStream out = Files.newOutputStream(path)) {
+		// Buffered: the chunk writer issues many tiny writes, and on a shared or
+		// network volume each one is a round trip.
+		try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(path), 1 << 16)) {
 			header(out, w, h);
-			chunk(out, "IDAT", deflate(this));
+			chunk(out, "IDAT", deflated());
 			chunk(out, "IEND", new byte[0]);
 		}
 	}
 
 	static void writeAnimated(Path path, List<PreviewImage> frames, int delayMs) throws IOException {
 		PreviewImage f0 = frames.get(0);
-		try (OutputStream out = Files.newOutputStream(path)) {
+		try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(path), 1 << 16)) {
 			header(out, f0.w, f0.h);
 			chunk(out, "acTL", ints(frames.size(), 0));
 			int seq = 0;
@@ -121,7 +136,7 @@ final class PreviewImage {
 				d.writeByte(0);
 				d.writeByte(0);
 				chunk(out, "fcTL", fc.toByteArray());
-				byte[] data = deflate(frames.get(n));
+				byte[] data = frames.get(n).deflated();
 				if (n == 0) {
 					chunk(out, "IDAT", data);
 				} else {
@@ -153,9 +168,21 @@ final class PreviewImage {
 		return bytes.toByteArray();
 	}
 
+	/**
+	 * The deflated scanlines, cached: a frame goes into its own PNG and the
+	 * APNG. Fastest deflate level — flat stone and blood compress well anyway.
+	 */
+	synchronized byte[] deflated() throws IOException {
+		if (idat == null) {
+			idat = deflate(this);
+		}
+		return idat;
+	}
+
 	private static byte[] deflate(PreviewImage img) throws IOException {
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-		try (DeflaterOutputStream z = new DeflaterOutputStream(bytes, new Deflater(6))) {
+		Deflater deflater = new Deflater(Deflater.BEST_SPEED);
+		try (DeflaterOutputStream z = new DeflaterOutputStream(bytes, deflater, 1 << 16)) {
 			byte[] row = new byte[1 + img.w * 3];
 			for (int y = 0; y < img.h; y++) {
 				for (int x = 0; x < img.w; x++) {
@@ -166,6 +193,8 @@ final class PreviewImage {
 				}
 				z.write(row);
 			}
+		} finally {
+			deflater.end();
 		}
 		return bytes.toByteArray();
 	}

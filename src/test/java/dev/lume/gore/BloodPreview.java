@@ -1,11 +1,13 @@
 package dev.lume.gore;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.IntStream;
 
 /**
  * Offline wall previewer: bakes every block face of a {@link PreviewScenes} scene
@@ -47,16 +49,29 @@ public final class BloodPreview {
 			boolean overlay, Path dir) throws IOException {
 		long started = System.nanoTime();
 		Files.createDirectories(dir.resolve("frames"));
-		List<PreviewImage> frames = new ArrayList<>();
 		System.out.printf(Locale.ROOT, "%s: %d placements, ticks %d..%d step %d%n", name, scene.size(), from, to, step);
 		System.out.println("  tick decals kernels wallTexels floorTexels meanAlpha");
 
-		for (long t = from; t <= to; t += step) {
-			List<Decal> decals = PreviewScenes.stored(scene, t);
-			PreviewImage img = frame(decals, t, px, overlay);
-			img.write(dir.resolve("frames").resolve(String.format(Locale.ROOT, "t%04d.png", t)));
-			frames.add(img);
+		// Frames are independent: bake, encode and write them in parallel, then
+		// print their rows in tick order.
+		int count = (int) ((to - from) / step) + 1;
+		PreviewImage[] images = new PreviewImage[count];
+		String[] rows = new String[count];
+		IntStream.range(0, count).parallel().forEach(n -> {
+			long t = from + n * step;
+			StringBuilder row = new StringBuilder();
+			images[n] = frame(PreviewScenes.stored(scene, t), t, px, overlay, row);
+			rows[n] = row.toString();
+			try {
+				images[n].write(dir.resolve("frames").resolve(String.format(Locale.ROOT, "t%04d.png", t)));
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		});
+		for (String row : rows) {
+			System.out.print(row);
 		}
+		List<PreviewImage> frames = List.of(images);
 
 		PreviewImage.writeAnimated(dir.resolve(name + ".apng"), frames, (int) Math.min(1000, 50 * step));
 		PreviewImage.sheet(frames, 8, 2).write(dir.resolve(name + "-sheet.png"));
@@ -64,13 +79,16 @@ public final class BloodPreview {
 				(System.nanoTime() - started) / 1e9, dir.toAbsolutePath());
 	}
 
-	/** One frame: the wall's faces over the floor's, {@code px} pixels per texel. */
-	static PreviewImage frame(List<Decal> decals, long now, int px, boolean overlay) {
+	/**
+	 * One frame: the wall's faces over the floor's, {@code px} pixels per texel.
+	 * Its table row is appended to {@code row}.
+	 */
+	static PreviewImage frame(List<Decal> decals, long now, int px, boolean overlay, StringBuilder row) {
 		int res = BloodField.RES;
 		int block = res * px;
 		int wallH = PreviewScenes.WALL_H;
 		PreviewImage img = new PreviewImage(PreviewScenes.WALL_W * block, (wallH + PreviewScenes.FLOOR_D) * block, STONE);
-		stone(img, px);
+		System.arraycopy(background(img.w, img.h, px), 0, img.rgb, 0, img.rgb.length);
 
 		List<BloodField.Kernel> wall = new ArrayList<>();
 		List<BloodField.Kernel> floor = new ArrayList<>();
@@ -132,9 +150,22 @@ public final class BloodPreview {
 		}
 
 		long total = lit[0] + lit[1];
-		System.out.printf(Locale.ROOT, "  %4d %6d %7d %10d %11d %9.3f%n", now, decals.size(), wall.size() + floor.size(),
-				lit[0], lit[1], total == 0 ? 0.0 : alphaSum / total);
+		row.append(String.format(Locale.ROOT, "  %4d %6d %7d %10d %11d %9.3f%n", now, decals.size(), wall.size() + floor.size(),
+				lit[0], lit[1], total == 0 ? 0.0 : alphaSum / total));
 		return img;
+	}
+
+	private static volatile int[] background;
+
+	/** The stone backdrop, the same for every frame of a run, so drawn once. */
+	private static int[] background(int w, int h, int px) {
+		int[] bg = background;
+		if (bg == null || bg.length != w * h) {
+			PreviewImage img = new PreviewImage(w, h, STONE);
+			stone(img, px);
+			background = bg = img.rgb;
+		}
+		return bg;
 	}
 
 	/** A faint per-texel mottle so translucent blood reads against something. */

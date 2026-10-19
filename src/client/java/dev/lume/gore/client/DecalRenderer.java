@@ -335,7 +335,7 @@ public final class DecalRenderer {
 					continue;
 				}
 
-				float f = Flow.length(now - decal.born());
+				float f = BloodField.dripStretch(decal, now);
 
 				if (f >= Flow.BREAK_OFF && DRIPPED.add(decal)) {
 					Direction dir = Direction.from3DDataValue(decal.face());

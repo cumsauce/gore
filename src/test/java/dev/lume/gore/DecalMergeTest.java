@@ -28,7 +28,8 @@ class DecalMergeTest {
 		Decal m = DecalMerge.merged(DecalMerge.findTarget(List.of(a), b).orElseThrow(), b);
 		assertEquals(0.10f, m.u(), 1e-6);
 		assertEquals(0.5f, m.size(), 1e-6);
-		assertEquals(140L, m.born());
+		assertEquals(100L, m.born());
+		assertEquals(140L, m.fed());
 		assertEquals(14, m.variant());
 	}
 

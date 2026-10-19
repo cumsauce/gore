@@ -134,8 +134,11 @@ public final class SprayModel {
 		u = u.normalize();
 		Vec3 v = dir.cross(u);
 		double theta = random.nextDouble() * Math.PI * 2.0;
-		// Bias toward the axis so the spray is densest along the impact direction.
-		double radius = spread * random.nextFloat() * random.nextFloat();
+		// A uniform radius keeps the spray densest along the impact direction
+		// (areal density falls as 1/r) while still filling the cone; the old
+		// product of two uniforms put the mean at a quarter of the spread, so a
+		// whole spray landed in one clump.
+		double radius = spread * random.nextFloat();
 		return dir.add(u.scale(Math.cos(theta) * radius)).add(v.scale(Math.sin(theta) * radius)).normalize();
 	}
 }

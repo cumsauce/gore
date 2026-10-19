@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /** Regression checks on the {@link BloodPreview} scenes: what the wall shows over time. */
@@ -96,8 +95,6 @@ class PreviewScenesTest {
 	 * droplet that will merge into it is still in the air.
 	 */
 	@Test
-	@Disabled("Known bug: DecalMerge.merged gives a drip the in-flight candidate's future born, "
-			+ "so BloodField.kernels hides the whole drip until that droplet lands")
 	void runningDrip_staysVisible_whileAMergingDropletFlies() {
 		Decal first = PreviewScenes.wall(2.0, 2.0, 0.4f, 90f, 14, 10);
 		Decal second = PreviewScenes.wall(2.02, 2.0, 0.4f, 90f, 14, 40);

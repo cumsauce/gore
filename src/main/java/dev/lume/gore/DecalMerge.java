@@ -97,8 +97,10 @@ public final class DecalMerge {
 	 * The single decal that replaces {@code target} once {@code candidate} has
 	 * merged into it. Keeps the target's position, face, (u,v) and rotation;
 	 * both grow by quadrature (area adds) towards their max size, and stains
-	 * step up one density band. The
-	 * merged decal is born when the new supply arrived, restarting the flow.
+	 * step up one density band. A merged drip keeps
+	 * the target's {@code born}, so it stays on the wall while the new supply is
+	 * still in the air, and is {@code fed} when that supply lands, which
+	 * restarts its run ({@link BloodField#dripStretch}).
 	 *
 	 * <p>Callers must only pass pairs {@link #findTarget} accepted.
 	 */
@@ -106,7 +108,8 @@ public final class DecalMerge {
 		if (isDrip(target)) {
 			float size = (float) Math.sqrt(target.size() * target.size() + candidate.size() * candidate.size());
 			return new Decal(target.x(), target.y(), target.z(), target.face(), target.u(), target.v(),
-					Math.min(DRIP_MAX_SIZE, size), target.rot(), DRIP_VARIANT, candidate.born());
+					Math.min(DRIP_MAX_SIZE, size), target.rot(), DRIP_VARIANT,
+					Math.min(target.born(), candidate.born()), Math.max(target.fed(), candidate.born()));
 		}
 
 		int variant = (target.variant() / 3) * 3 + Math.min(2, target.variant() % 3 + 1);

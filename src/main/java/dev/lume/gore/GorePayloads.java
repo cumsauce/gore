@@ -6,13 +6,24 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.phys.Vec3;
 
 public final class GorePayloads {
 	private GorePayloads() {
 	}
 
-	/** Incremental decals placed by a hit, sent to nearby clients. */
-	public record DecalsPayload(List<Decal> decals) implements CustomPacketPayload {
+	/**
+	 * Incremental decals placed by a hit, sent to nearby clients. {@code flights}
+	 * are the decals whose blood is still in the air: each was born in the
+	 * future, at the tick its droplet lands, and the client flies a visible
+	 * droplet from {@code origin} (the wound) to it over that time, so the stain
+	 * appears where and when the droplet hits. Empty for non-flying marks.
+	 */
+	public record DecalsPayload(List<Decal> decals, Vec3 origin, List<Decal> flights) implements CustomPacketPayload {
+		public DecalsPayload(List<Decal> decals) {
+			this(decals, Vec3.ZERO, List.of());
+		}
+
 		public static final CustomPacketPayload.Type<DecalsPayload> TYPE = new CustomPacketPayload.Type<>(Gore.id("decals"));
 
 		@Override
@@ -46,8 +57,10 @@ public final class GorePayloads {
 	}
 
 	public static final StreamCodec<ByteBuf, DecalsPayload> DECALS_CODEC = StreamCodec.composite(
-			ByteBufCodecs.<ByteBuf, Decal>list().apply(Decal.STREAM_CODEC),
-			DecalsPayload::decals,
+			ByteBufCodecs.<ByteBuf, Decal>list().apply(Decal.STREAM_CODEC), DecalsPayload::decals,
+			StreamCodec.composite(ByteBufCodecs.DOUBLE, Vec3::x, ByteBufCodecs.DOUBLE, Vec3::y,
+					ByteBufCodecs.DOUBLE, Vec3::z, Vec3::new), DecalsPayload::origin,
+			ByteBufCodecs.<ByteBuf, Decal>list().apply(Decal.STREAM_CODEC), DecalsPayload::flights,
 			DecalsPayload::new);
 
 	public static final StreamCodec<ByteBuf, DecalsGonePayload> GONE_CODEC = StreamCodec.composite(

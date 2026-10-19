@@ -2,7 +2,7 @@
 
 Blood that behaves like blood: creatures bleed when they are cut, hard impacts throw it, and it stays where it lands. A Fabric mod for Minecraft 26.3.
 
-Status: **0.5.0**, on the [releases page](https://github.com/cumsauce/gore/releases).
+Status: **0.6.0**, on the [releases page](https://github.com/cumsauce/gore/releases).
 
 ## The idea
 
@@ -17,6 +17,7 @@ It is all cosmetic. Bleeding never costs health or damages anything; the wound i
 - **Severity** comes from the damage actually taken, measured against the creature's maximum health, so a hit that nearly kills a chicken is not the same as one that barely dents a ravager.
 - **Direction** is the projectile's own velocity when there is a projectile, otherwise the line from attacker to victim, otherwise the damage source's position. A blow from below throws blood upward into the ceiling; a hit from the side paints the wall behind.
 - **Splatter** is a set of jittered rays cast from the wound in a cone along the blow, clipped against block collision shapes. Each ray that lands stores a decal: which block, which face, where on the face, how big, which way it is turned, and which cell of the decal texture atlas to use. The angle it struck at picks the stain's elongation — square on gives a round blot, glancing gives a long-tailed ellipse — and the blow's force picks the droplet size and how many satellites it casts, so a harder hit throws more, smaller drops.
+- **The spray is the splatter.** Every stain a hit leaves on a wall or floor is carried there by a droplet you can watch: the server stamps the stain's birth at the tick its droplet arrives, and the client flies that droplet from the wound along a real gravity arc (about 8 m/s, a flicked brush rather than a gunshot), so the mark appears exactly where and when it lands. A few free drops miss everything and fall.
 - Spray is a directed cone with a log-normal droplet size distribution and air-drag ballistics; mist hangs and evaporates within a second. A hard hit also opens **arterial jets** — short-lived emitters at the wound that keep throwing droplets for a fraction of a second, so the wound reads as being under pressure instead of as a single puff.
 - Blood that reaches a **floor** pools there instead of keeping an impact tail. A pool is born small and floods outward over about two seconds, decelerating as it spreads, so a fight visibly soaks the ground around it.
 - Drips start wide where the splat fed them, taper as they descend, accelerate, thin, shed a falling droplet and merge with neighbours.
@@ -29,7 +30,7 @@ It is all cosmetic. Bleeding never costs health or damages anything; the wound i
 - **Decals persist.** They live in a per-level `SavedData` capped at 1024, oldest evicted first, written to `dimensions/<dim>/data/gore/decals.dat`. They survive restarts, and they are per-dimension.
 - **Everyone sees them.** The server is authoritative: new decals go to every player within 96 blocks as they are made, and a joining player — or one changing dimension — receives the full list for the level they are entering.
 - **Gear gets bloody.** The weapon that drew the blood, and the victim's armor, each carry a `gore:blood` component they accumulate over hits. Player gear rinses clean in water; the component is per-item, so the blood is on the item wherever it goes.
-- **Rendering** happens in the level's own world pass: each decal is a lit, textured quad seated two centimetres off the block face so it never z-fights, lit by the block it sits on. Decals are submitted on `COLLECT_SUBMITS`, the point where the frame's geometry is baked; submitting from a draw event instead (an earlier version did) leaves them a frame behind the camera, which is what makes blood swim over the world and pop in and out of view as the player moves. 26.3's custom-geometry submit path draws nothing, so decals ride the same model pass the entities do — one baked single-face model per atlas cell. Particles and item-icon splats are drawn by the client's own paths.
+- **Rendering** happens in the level's own world pass. Wall blood is a liquid surface, not stickers: every decal contributes metaball kernels to the block faces it reaches, and each face is baked into one small texture and drawn as a single lit quad, so overlapping blood fuses instead of z-fighting, pools swallow the spatter they reach, drips have a rounded meniscus, and blood runs across block seams. Decals are submitted on `COLLECT_SUBMITS`, the point where the frame's geometry is baked; submitting from a draw event instead (an earlier version did) leaves them a frame behind the camera, which is what makes blood swim over the world and pop in and out of view as the player moves. 26.3's custom-geometry submit path draws nothing, so decals ride the same model pass the entities do — one baked single-face model per atlas cell. Particles and item-icon splats are drawn by the client's own paths.
 
 ## Install
 

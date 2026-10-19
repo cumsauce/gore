@@ -491,6 +491,137 @@ public class GoreClientGameTest implements FabricClientGameTest {
 
 			// Leave the decals empty for any later scenes.
 			context.runOnClient(mc -> DecalManager.clear());
+
+			sequences(context, singleplayer, fx, fy, fz);
 		}
+	}
+
+	/**
+	 * Temporal scenes: frame sequences rather than stills, because the defects
+	 * that matter here — z-fighting shimmer, particles jittering, a drip's
+	 * shape while it runs — only exist across frames. Each frame is named
+	 * {@code seq-<scene>-<nnn>}; tools/seq.py turns a scene into an animated
+	 * PNG, a contact sheet and a per-frame flicker score.
+	 */
+	private static void sequences(ClientGameTestContext context, TestSingleplayerContext singleplayer,
+			int fx, int fy, int fz) {
+		singleplayer.getServer().runCommand("weather clear");
+		singleplayer.getServer().runCommand("difficulty peaceful");
+		singleplayer.getServer().runCommand("kill @e[type=!minecraft:player]");
+		singleplayer.getServer().computeOnServer(server -> {
+			DecalStore store = server.getLevel(Level.OVERWORLD).getDataStorage().computeIfAbsent(DecalStore.TYPE);
+			store.removeAll(store.getAll());
+			return null;
+		});
+		context.runOnClient(mc -> {
+			DecalManager.clear();
+			DecalRenderer.clearDrips();
+			mc.player.setPos(fx + 0.5, fy, fz + 0.5);
+		});
+		context.waitTicks(5);
+
+		// 1. Overlap: a cluster of stains, two pools and drips on the front wall
+		// and floor, all overlapping, with the camera strafing slowly sideways.
+		// Coplanar quads shimmer under exactly this kind of motion.
+		context.runOnClient(mc -> {
+			long born = mc.level.getGameTime();
+			int n = Direction.SOUTH.get3DDataValue();
+			int up = Direction.UP.get3DDataValue();
+			List<Decal> decals = new java.util.ArrayList<>();
+			java.util.Random r = new java.util.Random(7);
+			for (int i = 0; i < 18; i++) {
+				int bx = fx - 1 + r.nextInt(3);
+				decals.add(new Decal(bx, fy + 1 + r.nextInt(2), fz - 4, n,
+						(r.nextFloat() - 0.5f) * 0.6f, (r.nextFloat() - 0.5f) * 0.6f,
+						0.25f + r.nextFloat() * 0.25f, r.nextFloat() * 360f, r.nextInt(12), born - 5));
+			}
+			decals.add(new Decal(fx, fy + 2, fz - 4, n, 0.1f, 0.2f, 0.7f, 90f, 14, born));
+			decals.add(new Decal(fx - 1, fy + 2, fz - 4, n, 0.3f, 0.1f, 0.5f, 90f, 14, born - 10));
+			decals.add(new Decal(fx, fy - 1, fz - 3, up, 0.0f, 0.0f, 0.9f, 0f, 12, born));
+			decals.add(new Decal(fx + 1, fy - 1, fz - 3, up, -0.3f, 0.1f, 0.8f, 40f, 13, born));
+			for (int i = 0; i < 8; i++) {
+				decals.add(new Decal(fx + r.nextInt(2), fy - 1, fz - 3, up,
+						(r.nextFloat() - 0.5f) * 0.7f, (r.nextFloat() - 0.5f) * 0.7f,
+						0.3f, r.nextFloat() * 360f, r.nextInt(12), born - 5));
+			}
+			// Bypass the merge so the renderer sees every overlap.
+			DecalManager.sync(mc.level.dimension().identifier(), decals);
+			mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(fx + 0.5, fy + 1.2, fz - 3.5));
+		});
+		for (int i = 0; i < 48; i++) {
+			int step = i;
+			context.runOnClient(mc -> {
+				mc.player.setPos(fx + 0.5 - 1.2 + step * 0.05, fy, fz + 0.5 - step * 0.02);
+				mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(fx + 0.5, fy + 1.2, fz - 3.5));
+			});
+			context.waitTicks(1);
+			context.takeScreenshot(String.format("seq-overlap-%03d", i));
+		}
+
+		// 2. Spray: a cow struck from the side, every tick for a second and a
+		// half — droplets, mist and jets, then what lands.
+		context.runOnClient(mc -> {
+			DecalManager.clear();
+			DecalRenderer.clearDrips();
+			mc.player.setPos(fx + 0.5, fy, fz + 0.5);
+			mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(fx + 0.5, fy + 1.0, fz - 2.5));
+		});
+		singleplayer.getServer().runCommand(
+				"summon minecraft:cow " + (fx + 0.5) + " " + fy + " " + (fz - 2.5) + " "
+						+ "{NoAI:1b,PersistenceRequired:1b,Silent:1b,Health:200f,"
+						+ "attributes:[{id:\"minecraft:max_health\",base:200d}]}");
+		context.waitTicks(10);
+		singleplayer.getServer().runCommand(
+				"damage @e[type=minecraft:cow,limit=1] 120 minecraft:player_attack at "
+						+ (fx - 3) + " " + (fy + 1) + " " + (fz - 2.5));
+		for (int i = 0; i < 30; i++) {
+			context.waitTicks(1);
+			context.takeScreenshot(String.format("seq-spray-%03d", i));
+		}
+		singleplayer.getServer().runCommand("kill @e[type=!minecraft:player]");
+		context.waitTicks(30); // let the death animation and poof finish
+
+		// 2b. Whip: a cow a block and a half from the wall, struck from behind so
+		// the blood is thrown at the wall, filmed from the side. Every droplet
+		// should be seen to fly and land as the stain it becomes.
+		context.runOnClient(mc -> {
+			DecalManager.clear();
+			DecalRenderer.clearDrips();
+			mc.player.setPos(fx + 4.5, fy + 0.5, fz + 1.0);
+			mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(fx, fy + 1.0, fz - 2.5));
+		});
+		singleplayer.getServer().runCommand("kill @e[type=minecraft:item]");
+		singleplayer.getServer().runCommand(
+				"summon minecraft:cow " + (fx + 0.5) + " " + fy + " " + (fz - 0.8) + " "
+						+ "{NoAI:1b,PersistenceRequired:1b,Silent:1b,Health:200f,Rotation:[90f,0f],"
+						+ "attributes:[{id:\"minecraft:max_health\",base:200d}]}");
+		context.waitTicks(10);
+		singleplayer.getServer().runCommand(
+				"damage @e[type=minecraft:cow,limit=1] 120 minecraft:player_attack at "
+						+ (fx + 0.5) + " " + (fy + 0.8) + " " + (fz + 3.0));
+		for (int i = 0; i < 24; i++) {
+			context.waitTicks(1);
+			context.takeScreenshot(String.format("seq-whip-%03d", i));
+		}
+		singleplayer.getServer().runCommand("kill @e[type=!minecraft:player]");
+		context.waitTicks(5);
+
+		// 3. Drip: one run forming under a splat, close up, every third tick.
+		context.runOnClient(mc -> {
+			DecalManager.clear();
+			DecalRenderer.clearDrips();
+			long born = mc.level.getGameTime();
+			int n = Direction.SOUTH.get3DDataValue();
+			DecalManager.sync(mc.level.dimension().identifier(), List.of(
+					new Decal(fx, fy + 2, fz - 4, n, 0f, 0.2f, 0.4f, 90f, 0, born),
+					new Decal(fx, fy + 2, fz - 4, n, 0f, 0.2f, 0.7f, 90f, 14, born)));
+			mc.player.setPos(fx + 0.5, fy, fz - 2.0);
+			mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(fx + 0.5, fy + 1.9, fz - 3.5));
+		});
+		for (int i = 0; i < 40; i++) {
+			context.waitTicks(3);
+			context.takeScreenshot(String.format("seq-drip-%03d", i));
+		}
+		context.runOnClient(mc -> DecalManager.clear());
 	}
 }

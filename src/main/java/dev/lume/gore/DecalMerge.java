@@ -18,8 +18,16 @@ public final class DecalMerge {
 	/** Drip tolerance along the face's tangent axes, in block units. */
 	public static final float DRIP_DU = 0.08f;
 	public static final float DRIP_DV = 0.25f;
-	/** Impact stains merge when their (u,v) positions are this close. */
+	/** Impact stains always merge when their (u,v) positions are this close. */
 	public static final float STAIN_DIST = 0.06f;
+	/**
+	 * Beyond {@link #STAIN_DIST}, impact stains also merge when their discs
+	 * overlap this much: centre distance under this fraction of the summed
+	 * radii. Like metaballs, two blots that visibly run into each other become
+	 * one heavier blot instead of two coplanar quads fighting for the same
+	 * pixels.
+	 */
+	public static final float STAIN_OVERLAP = 0.6f;
 	public static final float DRIP_MAX_SIZE = 0.9f;
 	public static final float STAIN_MAX_SIZE = 0.5f;
 
@@ -38,22 +46,33 @@ public final class DecalMerge {
 	 * stain. Pools never merge, and different faces never merge.
 	 */
 	public static Optional<Decal> findTarget(Collection<Decal> existing, Decal candidate) {
+		// Nearest match wins, so the client — which re-runs this with the merged
+		// decal, anchored on its target's (u,v) — always finds the same target.
+		Decal best = null;
+		float bestDist = Float.MAX_VALUE;
+
 		for (Decal decal : existing) {
 			if (decal.x() != candidate.x() || decal.y() != candidate.y()
 					|| decal.z() != candidate.z() || decal.face() != candidate.face()) {
 				continue;
 			}
 
-			if (isDrip(decal) && isDrip(candidate) && withinDripTolerance(decal, candidate)) {
-				return Optional.of(decal);
-			}
+			boolean match = (isDrip(decal) && isDrip(candidate) && withinDripTolerance(decal, candidate))
+					|| (isStain(decal) && isStain(candidate) && withinStainDistance(decal, candidate));
 
-			if (isStain(decal) && isStain(candidate) && withinStainDistance(decal, candidate)) {
-				return Optional.of(decal);
+			if (match) {
+				float du = decal.u() - candidate.u();
+				float dv = decal.v() - candidate.v();
+				float dist = du * du + dv * dv;
+
+				if (dist < bestDist) {
+					best = decal;
+					bestDist = dist;
+				}
 			}
 		}
 
-		return Optional.empty();
+		return Optional.ofNullable(best);
 	}
 
 	/**
@@ -77,8 +96,8 @@ public final class DecalMerge {
 	/**
 	 * The single decal that replaces {@code target} once {@code candidate} has
 	 * merged into it. Keeps the target's position, face, (u,v) and rotation;
-	 * drips grow by quadrature towards {@link #DRIP_MAX_SIZE}, stains grow by
-	 * 15 % towards {@link #STAIN_MAX_SIZE} and step up one density band. The
+	 * both grow by quadrature (area adds) towards their max size, and stains
+	 * step up one density band. The
 	 * merged decal is born when the new supply arrived, restarting the flow.
 	 *
 	 * <p>Callers must only pass pairs {@link #findTarget} accepted.
@@ -92,7 +111,11 @@ public final class DecalMerge {
 
 		int variant = (target.variant() / 3) * 3 + Math.min(2, target.variant() % 3 + 1);
 		return new Decal(target.x(), target.y(), target.z(), target.face(), target.u(), target.v(),
-				Math.min(STAIN_MAX_SIZE, target.size() * 1.15f), target.rot(), variant, candidate.born());
+				Math.min(STAIN_MAX_SIZE, Math.max(target.size() * 1.15f,
+						(float) Math.sqrt(target.size() * target.size() + candidate.size() * candidate.size()))),
+				// Keep the target's clock: a stain already on the wall must not
+				// vanish while the droplet merging into it is still in the air.
+				target.rot(), variant, Math.min(target.born(), candidate.born()));
 	}
 
 	/**
@@ -120,12 +143,20 @@ public final class DecalMerge {
 	}
 
 	private static boolean withinDripTolerance(Decal a, Decal b) {
-		return Math.abs(a.u() - b.u()) <= DRIP_DU && Math.abs(a.v() - b.v()) <= DRIP_DV;
+		float du = Math.abs(a.u() - b.u());
+		float dv = Math.abs(a.v() - b.v());
+		// DRIP_DV is the vertical (along-the-run) tolerance. On every wall but
+		// EAST, axis2 is world up; EAST's basis has axis1 up instead, so swap.
+		if (a.face() == net.minecraft.core.Direction.EAST.get3DDataValue()) {
+			return dv <= DRIP_DU && du <= DRIP_DV;
+		}
+		return du <= DRIP_DU && dv <= DRIP_DV;
 	}
 
 	private static boolean withinStainDistance(Decal a, Decal b) {
 		float du = a.u() - b.u();
 		float dv = a.v() - b.v();
-		return Math.sqrt(du * du + dv * dv) <= STAIN_DIST;
+		double dist = Math.sqrt(du * du + dv * dv);
+		return dist <= STAIN_DIST || dist <= STAIN_OVERLAP * 0.5f * (a.size() + b.size());
 	}
 }

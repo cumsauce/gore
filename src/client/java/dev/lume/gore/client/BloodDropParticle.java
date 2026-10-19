@@ -36,6 +36,15 @@ public class BloodDropParticle extends SingleQuadParticle {
 	private final TextureAtlasSprite baseSprite;
 	private final TextureAtlasSprite streakSprite;
 	private int landedAt = -1;
+	private boolean streaking;
+
+	/** Set by the provider, so droplets can be launched from a payload handler. */
+	private static SpriteSet providerSprites;
+
+	/** Guided flight: launch point, launch velocity and flight time, or null for a free drop. */
+	private Vec3 flightFrom;
+	private Vec3 flightV0;
+	private int flightTicks;
 
 	public BloodDropParticle(ClientLevel level, double x, double y, double z, double vx, double vy, double vz, SpriteSet sprites) {
 		this(level, x, y, z, vx, vy, vz, sprites, false);
@@ -104,7 +113,12 @@ public class BloodDropParticle extends SingleQuadParticle {
 		float roll = (float) Math.atan2(u, l) - (float) (Math.PI * 0.5);
 		this.roll = roll;
 		this.oRoll = roll;
-		this.setSprite(ParticleLook.stretch(speed) > 1.4f ? this.streakSprite : this.baseSprite);
+		// Hysteresis, so a droplet near the threshold does not flicker between sprites.
+		float stretch = ParticleLook.stretch(speed);
+		if (this.streaking ? stretch < 1.25f : stretch > 1.5f) {
+			this.streaking = !this.streaking;
+		}
+		this.setSprite(this.streaking ? this.streakSprite : this.baseSprite);
 	}
 
 	@Override
@@ -117,6 +131,17 @@ public class BloodDropParticle extends SingleQuadParticle {
 	public void tick() {
 		// Vanilla tick() applies its own gravity and friction; this droplet is driven
 		// entirely by Ballistics, so super.tick() must never run (it would double-apply).
+		// super.tick() is what normally advances the interpolation origin; without
+		// this, every frame is drawn between the spawn point and the current
+		// position, and the particle flickers along its whole path.
+		this.xo = this.x;
+		this.yo = this.y;
+		this.zo = this.z;
+
+		if (this.flightFrom != null) {
+			this.tickFlight();
+			return;
+		}
 		this.age++;
 
 		if (this.onGround && this.landedAt < 0) {
@@ -137,8 +162,60 @@ public class BloodDropParticle extends SingleQuadParticle {
 		this.zd = v.z;
 		this.move(this.xd, this.yd, this.zd);
 
+		// Particle.move zeroes a velocity component the world blocked. A drop
+		// that meets a wall or ceiling sticks (the decal is its mark) instead of
+		// sliding down the face as a streak.
+		if ((v.x != 0.0 && this.xd == 0.0) || (v.z != 0.0 && this.zd == 0.0) || (v.y > 0.0 && this.yd == 0.0)) {
+			this.remove();
+			return;
+		}
+
 		// A droplet that meets water is gone: no floating specks on the surface.
 		if (!this.level.getFluidState(BlockPos.containing(this.x, this.y, this.z)).isEmpty()) {
+			this.remove();
+		}
+	}
+
+	/**
+	 * Flies one visible droplet from the wound to the stain it becomes. The
+	 * path is an exact gravity arc that reaches {@code to} in {@code ticks},
+	 * the tick the server stamped as the stain's birth, so the mark appears
+	 * the moment the droplet arrives — the spray and the splatter are the same
+	 * blood. A bigger stain was a bigger drop.
+	 */
+	public static void fly(ClientLevel level, Vec3 from, Vec3 to, int ticks, float stainSize) {
+		if (providerSprites == null) {
+			return;
+		}
+
+		BloodDropParticle drop = new BloodDropParticle(level, from.x, from.y, from.z, 0, 0, 0, providerSprites, false);
+		int t = Math.max(1, ticks);
+		Vec3 gravity = new Vec3(0.0, -Ballistics.GRAVITY, 0.0);
+		drop.flightFrom = from;
+		drop.flightTicks = t;
+		drop.flightV0 = to.subtract(from).subtract(gravity.scale(0.5 * t * t)).scale(1.0 / t);
+		drop.xd = drop.flightV0.x;
+		drop.yd = drop.flightV0.y;
+		drop.zd = drop.flightV0.z;
+		drop.hasPhysics = false;
+		drop.lifetime = t + 1;
+		drop.quadSize = 0.04f + 0.11f * stainSize;
+		drop.alpha = 1.0f;
+		Minecraft.getInstance().particleEngine.add(drop);
+	}
+
+	private void tickFlight() {
+		this.age++;
+		double t = Math.min(this.age, this.flightTicks);
+		Vec3 p = this.flightFrom.add(this.flightV0.scale(t)).add(0.0, -0.5 * Ballistics.GRAVITY * t * t, 0.0);
+		// Velocity only steers the streak orientation; the position is exact.
+		this.xd = this.flightV0.x;
+		this.yd = this.flightV0.y - Ballistics.GRAVITY * t;
+		this.zd = this.flightV0.z;
+		this.setPos(p.x, p.y, p.z);
+
+		if (this.age >= this.flightTicks) {
+			this.splash();
 			this.remove();
 		}
 	}
@@ -150,13 +227,13 @@ public class BloodDropParticle extends SingleQuadParticle {
 	 */
 	private void splash() {
 		ParticleEngine engine = Minecraft.getInstance().particleEngine;
-		int count = 2 + this.random.nextInt(2);
+		int count = 1 + this.random.nextInt(2);
 		for (int i = 0; i < count; i++) {
 			double angle = this.random.nextDouble() * Math.PI * 2.0;
-			double speed = 0.03 + this.random.nextDouble() * 0.09;
+			double speed = 0.02 + this.random.nextDouble() * 0.05;
 			engine.add(new BloodDropParticle(this.level, this.x, this.y, this.z,
 					Math.cos(angle) * speed,
-					0.04 + this.random.nextDouble() * 0.08,
+					0.02 + this.random.nextDouble() * 0.05,
 					Math.sin(angle) * speed,
 					this.sprites, true));
 		}
@@ -172,6 +249,7 @@ public class BloodDropParticle extends SingleQuadParticle {
 
 		public Provider(SpriteSet sprites) {
 			this.sprites = sprites;
+			providerSprites = sprites;
 		}
 
 		@Override

@@ -14,6 +14,10 @@ public final class DecalManager {
 
 	private static final Deque<Decal> DECALS = new ArrayDeque<>();
 	private static Identifier dimension;
+	/** Cached render snapshot; null when the list changed. */
+	private static List<Decal> cached;
+	/** Bumped whenever the list changes, so the face field knows to re-index. */
+	private static int version;
 
 	private DecalManager() {
 	}
@@ -31,6 +35,9 @@ public final class DecalManager {
 
 			DECALS.addLast(decal);
 		}
+
+		cached = null;
+		version++;
 	}
 
 	/** Replaces the list with an authoritative snapshot for the given level. */
@@ -42,11 +49,15 @@ public final class DecalManager {
 
 		DECALS.clear();
 		DECALS.addAll(decals);
+		cached = null;
+		version++;
 	}
 
 	public static void clear() {
 		DECALS.clear();
 		dimension = null;
+		cached = null;
+		version++;
 	}
 
 	/**
@@ -59,10 +70,22 @@ public final class DecalManager {
 			return;
 		}
 
-		DECALS.removeAll(gone);
+		if (DECALS.removeAll(gone)) {
+			cached = null;
+		version++;
+		}
 	}
 
+	/** The decals, oldest first. Cached until the list changes; do not mutate. */
 	public static List<Decal> snapshot() {
-		return new ArrayList<>(DECALS);
+		if (cached == null) {
+			cached = new ArrayList<>(DECALS);
+		}
+
+		return cached;
+	}
+
+	public static int version() {
+		return version;
 	}
 }

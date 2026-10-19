@@ -1,5 +1,7 @@
 package dev.lume.gore.client;
 
+import dev.lume.gore.Decal;
+import dev.lume.gore.DecalMerge;
 import dev.lume.gore.Gore;
 import dev.lume.gore.GorePayloads;
 import dev.lume.gore.GoreStain;
@@ -21,7 +23,11 @@ import net.fabricmc.fabric.api.client.rendering.v1.LivingEntityRenderLayerRegist
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.texture.SimpleTexture;
 import net.minecraft.resources.Identifier;
@@ -55,7 +61,10 @@ public class GoreClient implements ClientModInitializer {
 				client.getTextureManager().registerAndLoad(BLOOD_ATLAS, new SimpleTexture(BLOOD_ATLAS)));
 
 		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsPayload.TYPE, (payload, context) ->
-				context.client().execute(() -> DecalManager.addDecals(payload.decals())));
+				context.client().execute(() -> {
+					DecalManager.addDecals(payload.decals());
+					launchFlights(payload);
+				}));
 		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsSyncPayload.TYPE, (payload, context) ->
 				context.client().execute(() -> DecalManager.sync(payload.dimension(), payload.decals())));
 		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsGonePayload.TYPE, (payload, context) ->
@@ -110,6 +119,30 @@ public class GoreClient implements ClientModInitializer {
 		ExtractItemDecorationsCallback.EVENT.register(BloodItemDecorations::extract);
 
 		Gore.LOGGER.info("Gore client initialized.");
+	}
+
+	/** One visible droplet per stain still in the air, landing as the stain appears. */
+	private static void launchFlights(GorePayloads.DecalsPayload payload) {
+		ClientLevel level = Minecraft.getInstance().level;
+
+		if (level == null || payload.flights().isEmpty()) {
+			return;
+		}
+
+		long now = level.getGameTime();
+
+		for (Decal decal : payload.flights()) {
+			if (DecalMerge.isDrip(decal)) {
+				continue; // a drip rides on the splat whose droplet already flies there
+			}
+
+			Direction face = Direction.from3DDataValue(decal.face());
+			Vec3 to = Vec3.atCenterOf(new BlockPos(decal.x(), decal.y(), decal.z()))
+					.add(new Vec3(face.getStepX(), face.getStepY(), face.getStepZ()).scale(0.51))
+					.add(Decal.axis1(face).scale(decal.u()))
+					.add(Decal.axis2(face).scale(decal.v()));
+			BloodDropParticle.fly(level, payload.origin(), to, (int) (decal.born() - now), decal.size());
+		}
 	}
 
 	private static void trackStains(int entityId, List<GoreStain> stains) {

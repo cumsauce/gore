@@ -61,6 +61,12 @@ public class BloodJetParticle extends SingleQuadParticle {
 	public void tick() {
 		// Not super.tick(): this emitter has no vanilla physics and must not be
 		// dragged by gravity or friction.
+		// super.tick() is what normally advances the interpolation origin; without
+		// this, every frame is drawn between the spawn point and the current
+		// position, and the particle flickers along its whole path.
+		this.xo = this.x;
+		this.yo = this.y;
+		this.zo = this.z;
 		this.age++;
 
 		if (this.age >= this.lifetime) {
@@ -70,14 +76,15 @@ public class BloodJetParticle extends SingleQuadParticle {
 
 		float life = this.age / (float) this.lifetime;
 		// The pressure behind the jet drops as the wound empties.
-		double speed = (0.55 + this.random.nextDouble() * 0.35) * (1.0 - 0.65 * life);
+		double speed = (0.25 + this.random.nextDouble() * 0.15) * (1.0 - 0.65 * life);
 
 		// Two axes spanning the plane perpendicular to the jet.
 		Vec3 helper = Math.abs(this.dir.y) < 0.9 ? new Vec3(0.0, 1.0, 0.0) : new Vec3(1.0, 0.0, 0.0);
 		Vec3 u = this.dir.cross(helper).normalize();
 		Vec3 v = this.dir.cross(u).normalize();
 
-		int drops = 1 + this.random.nextInt(2);
+		// A pulse every other tick: a stream, not a hose.
+		int drops = this.age % 2 == 0 ? 1 : 0;
 		ParticleEngine engine = Minecraft.getInstance().particleEngine;
 
 		for (int i = 0; i < drops; i++) {

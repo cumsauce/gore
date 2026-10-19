@@ -65,4 +65,35 @@ class DecalMergeTest {
 		assertFalse(DecalMerge.isDrip(new Decal(1, 2, 3, Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 15, 999L)));
 		assertFalse(DecalMerge.isDrip(new Decal(1, 2, 3, Direction.NORTH.get3DDataValue(), 0f, 0f, 0.5f, 0f, 0, 999L)));
 	}
+
+	@Test
+	void stains_whoseDiscsOverlap_mergeLikeMetaballs() {
+		Decal a = stain(0f, 0f, 0.3f, 0);
+		Decal b = stain(0.15f, 0f, 0.3f, 0);
+		Decal m = DecalMerge.merged(DecalMerge.findTarget(List.of(a), b).orElseThrow(), b);
+		assertEquals(0f, m.u(), 1e-6);
+		assertEquals((float) Math.sqrt(0.18), m.size(), 1e-6);
+	}
+
+	@Test
+	void stains_barelyTouching_stayApart() {
+		assertTrue(DecalMerge.findTarget(List.of(stain(0f, 0f, 0.2f, 0)), stain(0.19f, 0f, 0.2f, 0)).isEmpty());
+	}
+
+	@Test
+	void findTarget_picksNearest() {
+		Decal far = stain(0.1f, 0f, 0.4f, 0);
+		Decal near = stain(0.02f, 0f, 0.4f, 0);
+		assertEquals(near, DecalMerge.findTarget(List.of(far, near), stain(0f, 0f, 0.3f, 0)).orElseThrow());
+	}
+
+	@Test
+	void eastDrips_mergeAlongTheVertical() {
+		int east = Direction.EAST.get3DDataValue();
+		Decal a = new Decal(1, 2, 3, east, 0.0f, 0.0f, 0.4f, 0f, 14, 1L);
+		Decal stacked = new Decal(1, 2, 3, east, 0.2f, 0.0f, 0.3f, 0f, 14, 2L);
+		Decal beside = new Decal(1, 2, 3, east, 0.0f, 0.2f, 0.3f, 0f, 14, 2L);
+		assertTrue(DecalMerge.findTarget(List.of(a), stacked).isPresent());
+		assertTrue(DecalMerge.findTarget(List.of(a), beside).isEmpty());
+	}
 }

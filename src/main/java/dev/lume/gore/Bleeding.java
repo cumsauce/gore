@@ -114,7 +114,7 @@ public final class Bleeding {
 				stored.add(store.addOrMerge(decal));
 			}
 
-			storedDecals(level, wound, stored);
+			storedDecals(level, wound, stored, placed);
 		}
 
 		markGear(victim, source, severity, random);
@@ -258,7 +258,7 @@ public final class Bleeding {
 			for (Decal decal : placed) {
 				stored.add(store.addOrMerge(decal));
 			}
-			storedDecals(level, burst, stored);
+			storedDecals(level, burst, stored, placed);
 		}
 
 		// A full burst of droplets and a pair of jets in opposite directions, so
@@ -289,11 +289,21 @@ public final class Bleeding {
 
 	/** Sends a batch of stored decals to everyone who can see this level's blood. */
 	private static void storedDecals(ServerLevel level, Vec3 around, List<Decal> decals) {
+		storedDecals(level, around, decals, List.of());
+	}
+
+	/**
+	 * As above, plus the raw placed decals that are still in flight (born in the
+	 * future), so clients can fly each droplet from {@code around} to its stain.
+	 */
+	private static void storedDecals(ServerLevel level, Vec3 around, List<Decal> decals, List<Decal> placed) {
 		if (decals.isEmpty()) {
 			return;
 		}
 
-		GorePayloads.DecalsPayload payload = new GorePayloads.DecalsPayload(List.copyOf(decals));
+		long now = level.getGameTime();
+		List<Decal> flights = placed.stream().filter(d -> d.born() > now).toList();
+		GorePayloads.DecalsPayload payload = new GorePayloads.DecalsPayload(List.copyOf(decals), around, flights);
 		for (ServerPlayer player : PlayerLookup.around(level, around, 96.0)) {
 			ServerPlayNetworking.send(player, payload);
 		}
@@ -351,7 +361,7 @@ public final class Bleeding {
 		// wound itself the puffs sit inside the model's silhouette and the camera
 		// never sees them. 0.55 blocks past the wound is outside a body-sized
 		// volume while still reading as coming from the impact.
-		Vec3 mistOrigin = wound.add(dir.scale(0.55));
+		Vec3 mistOrigin = wound.add(dir.scale(0.4));
 		for (Vec3 mist : SprayModel.mistVelocities(dir, severity, random)) {
 			level.sendParticles(Gore.BLOOD_MIST, mistOrigin.x, mistOrigin.y, mistOrigin.z, 0, mist.x, mist.y, mist.z, 1.0);
 		}
@@ -384,7 +394,11 @@ public final class Bleeding {
 					continue;
 				}
 
-				Decal decal = decalAt(hit, rayDir, severity, level.getGameTime(), random);
+				// The stain is born when its droplet gets there, not at the blow:
+				// the client flies a droplet along this path and the mark appears
+				// on impact (see SprayModel.flightTicks).
+				long arrives = level.getGameTime() + SprayModel.flightTicks(wound.distanceTo(hit.getLocation()));
+				Decal decal = decalAt(hit, rayDir, severity, arrives, random);
 
 				if (decal != null) {
 					placed.add(decal);
@@ -392,7 +406,7 @@ public final class Bleeding {
 					// A heavy wound leaves a run that will crawl down the wall.
 					if (severity >= DRIP_SEVERITY && random.nextFloat() < DRIP_CHANCE
 							&& placed.size() < MAX_DECALS_PER_HIT) {
-						Decal drip = dripDecal(hit, severity, level.getGameTime(), random);
+						Decal drip = dripDecal(hit, severity, arrives + 1, random);
 
 						if (drip != null) {
 							placed.add(drip);
@@ -413,7 +427,8 @@ public final class Bleeding {
 
 			if (hit.getType() == HitResult.Type.BLOCK && hit.getDirection() == Direction.UP) {
 				float poolSize = Mth.clamp(0.45f + 0.35f * severity + random.nextFloat() * 0.15f, 0.4f, 0.9f);
-				Decal pool = poolDecal(hit, poolSize, level.getGameTime(), random);
+				long arrives = level.getGameTime() + SprayModel.flightTicks(wound.distanceTo(hit.getLocation()));
+				Decal pool = poolDecal(hit, poolSize, arrives, random);
 
 				if (pool != null) {
 					placed.add(pool);

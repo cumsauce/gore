@@ -38,14 +38,33 @@ public final class SprayModel {
 	private SprayModel() {
 	}
 
-	/** Number of drops a hit of {@code severity} (0–1) ejects. */
-	public static int dropCount(float severity) {
-		return Math.round(6 + 18 * severity);
+	/**
+	 * Speed of a droplet that carries a stain to a wall, in blocks per tick —
+	 * about 8 m/s, a flicked paintbrush rather than a gunshot, so the eye can
+	 * follow each drop from the wound to the mark it leaves.
+	 */
+	public static final double FLIGHT_SPEED = 0.4;
+
+	/**
+	 * Ticks a stain-carrying droplet takes to cover {@code distance} blocks.
+	 * The stain is born at the blow plus this, and the client flies the droplet
+	 * over exactly this time, so the mark appears when the droplet arrives.
+	 */
+	public static int flightTicks(double distance) {
+		return (int) Math.max(2, Math.min(16, Math.round(distance / FLIGHT_SPEED)));
 	}
 
-	/** Number of mist droplets; light hits below {@link #MIST_SEVERITY} throw none. */
+	/**
+	 * Number of free drops a hit of {@code severity} (0–1) ejects, on top of the
+	 * stain-carrying ones: the few that miss every surface and just fall.
+	 */
+	public static int dropCount(float severity) {
+		return Math.round(2 + 5 * severity);
+	}
+
+	/** Number of mist puffs; light hits below {@link #MIST_SEVERITY} throw none. */
 	public static int mistCount(float severity) {
-		return severity < MIST_SEVERITY ? 0 : Math.round(6 + 12 * severity);
+		return severity < MIST_SEVERITY ? 0 : Math.round(2 + 4 * severity);
 	}
 
 	/**
@@ -69,7 +88,7 @@ public final class SprayModel {
 	public static List<Vec3> dropVelocities(Vec3 dir, float severity, RandomSource random) {
 		int count = dropCount(severity);
 		List<Vec3> velocities = new ArrayList<>(count);
-		double baseSpeed = 0.35 + 0.45 * severity;
+		double baseSpeed = 0.18 + 0.2 * severity;
 
 		for (int i = 0; i < count; i++) {
 			double speed = baseSpeed * (0.7 + 0.3 * random.nextFloat());
@@ -88,7 +107,7 @@ public final class SprayModel {
 		List<Vec3> velocities = new ArrayList<>(count);
 
 		for (int i = 0; i < count; i++) {
-			double speed = 0.30 + 0.20 * random.nextFloat();
+			double speed = 0.20 + 0.12 * random.nextFloat();
 			velocities.add(coneDirection(dir, random, MIST_SPREAD).scale(speed));
 		}
 

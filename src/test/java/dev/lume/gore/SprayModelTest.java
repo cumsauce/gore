@@ -20,7 +20,7 @@ class SprayModelTest {
 	void dropVelocities_lieInsideCone_andHaveImpactSpeed() {
 		Vec3 dir = new Vec3(1, 0, 0);
 		List<Vec3> v = SprayModel.dropVelocities(dir, 0.6f, r);
-		assertEquals(17, v.size());
+		assertEquals(5, v.size());
 		double meanSpeed = 0;
 		for (Vec3 each : v) {
 			double angle = Math.toDegrees(Math.acos(each.normalize().dot(dir)));
@@ -28,14 +28,22 @@ class SprayModelTest {
 			meanSpeed += each.length();
 		}
 		meanSpeed /= v.size();
-		assertTrue(meanSpeed > 0.45 && meanSpeed < 0.60, "mean speed " + meanSpeed);
+		// A flick, not a gunshot: the eye has to be able to follow each drop.
+		assertTrue(meanSpeed > 0.20 && meanSpeed < 0.31, "mean speed " + meanSpeed);
 	}
 
 	@Test
 	void counts_atMinimumSeverity() {
-		assertEquals(7, SprayModel.dropCount(0.08f));
+		assertEquals(2, SprayModel.dropCount(0.08f));
 		assertEquals(0, SprayModel.mistCount(0.08f));
-		assertEquals(13, SprayModel.mistCount(0.6f));
+		assertEquals(4, SprayModel.mistCount(0.6f));
+	}
+
+	@Test
+	void flightTicks_followDistance_withinBounds() {
+		assertEquals(2, SprayModel.flightTicks(0.1));
+		assertEquals(8, SprayModel.flightTicks(3.2));
+		assertEquals(16, SprayModel.flightTicks(50.0));
 	}
 
 	@Test

@@ -39,6 +39,23 @@ public final class GorePayloads {
 		}
 	}
 
+	/**
+	 * Never sent. The server registers a receiver for it so a client can ask
+	 * {@code ClientPlayNetworking.canSend(HelloPayload.TYPE)}: true only when
+	 * the server runs the mod. Without it the client simulates the blood
+	 * itself (see {@code ClientBleeding}).
+	 */
+	public record HelloPayload() implements CustomPacketPayload {
+		public static final CustomPacketPayload.Type<HelloPayload> TYPE = new CustomPacketPayload.Type<>(Gore.id("hello"));
+
+		@Override
+		public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	public static final StreamCodec<ByteBuf, HelloPayload> HELLO_CODEC = StreamCodec.unit(new HelloPayload());
+
 	/** Full decal list of a level, sent on join and on dimension change. */
 	public record DecalsSyncPayload(Identifier dimension, List<Decal> decals) implements CustomPacketPayload {
 		public static final CustomPacketPayload.Type<DecalsSyncPayload> TYPE = new CustomPacketPayload.Type<>(Gore.id("decals_sync"));

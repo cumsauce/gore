@@ -1,10 +1,13 @@
 package dev.lume.gore.client;
 
 import dev.lume.gore.Decal;
+import dev.lume.gore.Dismemberment;
 import dev.lume.gore.DecalMerge;
 import dev.lume.gore.Gore;
 import dev.lume.gore.GorePayloads;
 import dev.lume.gore.GoreStain;
+import dev.lume.gore.Limb;
+import dev.lume.gore.LimbState;
 import dev.lume.gore.StainPayloads;
 import java.util.HashMap;
 import java.util.List;
@@ -13,6 +16,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.particle.v1.ParticleProviderRegistry;
@@ -28,6 +32,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.renderer.entity.state.ArmedEntityRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.texture.SimpleTexture;
 import net.minecraft.resources.Identifier;
@@ -62,10 +67,7 @@ public class GoreClient implements ClientModInitializer {
 				client.getTextureManager().registerAndLoad(BLOOD_ATLAS, new SimpleTexture(BLOOD_ATLAS)));
 
 		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsPayload.TYPE, (payload, context) ->
-				context.client().execute(() -> {
-					DecalManager.addDecals(payload.decals());
-					launchFlights(payload);
-				}));
+				context.client().execute(() -> receiveDecals(payload)));
 		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsSyncPayload.TYPE, (payload, context) ->
 				context.client().execute(() -> DecalManager.sync(payload.dimension(), payload.decals())));
 		ClientPlayNetworking.registerGlobalReceiver(GorePayloads.DecalsGonePayload.TYPE, (payload, context) ->
@@ -73,6 +75,7 @@ public class GoreClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
 			DecalManager.clear();
 			DecalRenderer.clearDrips();
+			SeveredLimbs.clear();
 		});
 
 		ClientPlayNetworking.registerGlobalReceiver(StainPayloads.AddPayload.TYPE, (payload, context) ->
@@ -97,6 +100,7 @@ public class GoreClient implements ClientModInitializer {
 		// Models (and the render states their data hangs off) are rebuilt on
 		// resource reload; drop the per-model part caches so stains re-resolve.
 		InvalidateRenderStateCallback.EVENT.register(StainAnchor::invalidate);
+		InvalidateRenderStateCallback.EVENT.register(LimbRender::invalidate);
 
 		// One registration covers every living entity type.
 		LivingEntityRenderLayerRegistrationCallback.EVENT.register((type, renderer, helper, context) -> {
@@ -117,9 +121,26 @@ public class GoreClient implements ClientModInitializer {
 		// they crawl across the world as the camera moves and are missing
 		// entirely on frames that skip that draw call.
 		LevelRenderEvents.COLLECT_SUBMITS.register(DecalRenderer::render);
+		LevelRenderEvents.COLLECT_SUBMITS.register(SeveredLimbs::render);
+		ClientTickEvents.END_CLIENT_TICK.register(SeveredLimbs::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(ClientBleeding::tick);
+		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ClientBleeding.onJoin());
+		ClientPlayNetworking.registerGlobalReceiver(Dismemberment.SeverPayload.TYPE, (payload, context) ->
+				context.client().execute(() -> {
+					if (context.client().level != null) {
+						SeveredLimbs.sever(context.client().level, payload.entityId(),
+								Limb.values()[Math.floorMod(payload.limb(), Limb.values().length)], payload.dir());
+					}
+				}));
 		ExtractItemDecorationsCallback.EVENT.register(BloodItemDecorations::extract);
 
 		Gore.LOGGER.info("Gore client initialized.");
+	}
+
+	/** A batch of new decals, from the server or from {@link ClientBleeding}. */
+	static void receiveDecals(GorePayloads.DecalsPayload payload) {
+		DecalManager.addDecals(payload.decals());
+		launchFlights(payload);
 	}
 
 	/** One visible droplet per stain still in the air, landing as the stain appears. */
@@ -146,7 +167,7 @@ public class GoreClient implements ClientModInitializer {
 		}
 	}
 
-	private static void trackStains(int entityId, List<GoreStain> stains) {
+	static void trackStains(int entityId, List<GoreStain> stains) {
 		if (stains.isEmpty()) {
 			STAINED_ENTITIES.remove(entityId);
 		} else {
@@ -165,10 +186,6 @@ public class GoreClient implements ClientModInitializer {
 	 * same per-entity partial tick, so the keys match bit for bit.
 	 */
 	private static void extractStains(LevelExtractionContext context) {
-		if (STAINED_ENTITIES.isEmpty()) {
-			return;
-		}
-
 		ClientLevel level = context.level();
 
 		if (level == null) {
@@ -176,20 +193,28 @@ public class GoreClient implements ClientModInitializer {
 		}
 
 		TickRateManager tickRate = level.tickRateManager();
-		Map<StateKey, List<GoreStain>> byKey = null;
+		Map<StateKey, BodyData> byKey = null;
+		long now = level.getGameTime();
 
-		for (int entityId : STAINED_ENTITIES) {
-			Entity entity = level.getEntity(entityId);
+		for (Entity entity : level.entitiesForRendering()) {
+			boolean stained = STAINED_ENTITIES.contains(entity.getId());
+			LimbState limbs = entity.getAttached(Gore.LIMBS);
+			if (limbs == null && ClientBleeding.active()) {
+				limbs = ClientBleeding.limbs(entity.getId());
+			}
+			int severed = limbs == null ? 0 : limbs.severed();
 
-			if (entity == null) {
+			if (!stained && severed == 0) {
 				continue;
 			}
 
-			List<GoreStain> stains = StainManager.snapshot(entityId);
+			List<GoreStain> stains = stained ? StainManager.snapshot(entity.getId()) : List.of();
 
-			if (stains.isEmpty()) {
-				STAINED_ENTITIES.remove(entityId);
-				continue;
+			if (stained && stains.isEmpty()) {
+				STAINED_ENTITIES.remove(entity.getId());
+				if (severed == 0) {
+					continue;
+				}
 			}
 
 			// Mirrors LevelExtractor: partial tick, then Mth.lerp over the old
@@ -206,7 +231,7 @@ public class GoreClient implements ClientModInitializer {
 					Mth.lerp(partialTick, entity.yOld, entity.getY()),
 					Mth.lerp(partialTick, entity.zOld, entity.getZ()),
 					entity.getType());
-			byKey.put(key, stains);
+			byKey.put(key, new BodyData(stains, severed, BodyDamageLayer.limbCoat(stains, entity, now)));
 		}
 
 		if (byKey == null) {
@@ -214,13 +239,34 @@ public class GoreClient implements ClientModInitializer {
 		}
 
 		for (EntityRenderState state : context.levelState().entityRenderStates) {
-			List<GoreStain> stains = byKey.get(new StateKey(state.x, state.y, state.z, state.entityType));
+			BodyData data = byKey.get(new StateKey(state.x, state.y, state.z, state.entityType));
 
-			if (stains != null) {
-				// Fabric injects FabricRenderState into EntityRenderState at
-				// runtime; the cast is the standard bridge, no Mixin of ours.
-				((FabricRenderState) state).setData(StainStateKeys.STAINS, stains);
+			if (data == null) {
+				continue;
+			}
+
+			// Fabric injects FabricRenderState into EntityRenderState at
+			// runtime; the cast is the standard bridge, no Mixin of ours.
+			FabricRenderState frs = (FabricRenderState) state;
+			if (!data.stains().isEmpty()) {
+				frs.setData(StainStateKeys.STAINS, data.stains());
+			}
+			frs.setData(LimbRender.COAT, data.coat());
+			if (data.severed() != 0) {
+				frs.setData(LimbRender.SEVERED, data.severed());
+				// A cut-off arm drops what it held.
+				if (state instanceof ArmedEntityRenderState armed) {
+					if ((data.severed() & Limb.RIGHT_ARM.bit()) != 0) {
+						armed.rightHandItemState.clear();
+					}
+					if ((data.severed() & Limb.LEFT_ARM.bit()) != 0) {
+						armed.leftHandItemState.clear();
+					}
+				}
 			}
 		}
+	}
+
+	private record BodyData(List<GoreStain> stains, int severed, float[] coat) {
 	}
 }

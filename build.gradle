@@ -59,6 +59,11 @@ loom {
 				vmArg "-Dgore.dryScale=0.02"
 				// Per-tick particle trace for tools/trace.py (see ParticleTrace).
 				vmArg "-Dgore.trace=${localRunDir(name)}/gore-trace.jsonl"
+				// -Pgore.vanillaServer: run the integrated server without the
+				// mod's server half, to test the client-only fallback.
+				if (project.hasProperty("gore.vanillaServer")) {
+					vmArg "-Dgore.vanillaServer=true"
+				}
 			}
 		}
 	}

@@ -1,0 +1,13 @@
+{
+	"required": true,
+	"package": "dev.lume.gore.client.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"LivingEntityMixin",
+		"ModelFeatureRendererMixin",
+		"ModelPartAccessor"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

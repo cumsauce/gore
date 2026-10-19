@@ -2,10 +2,14 @@ package dev.lume.gore;
 
 import com.mojang.serialization.Codec;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
+import net.fabricmc.fabric.api.attachment.v1.AttachmentSyncPredicate;
+import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityLevelChangeEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.particle.v1.FabricParticleTypes;
 import net.minecraft.core.Registry;
@@ -36,6 +40,12 @@ public class Gore implements ModInitializer {
 	 */
 	public static final SimpleParticleType BLOOD_GIB = FabricParticleTypes.simple();
 
+	/** Which limbs a creature has lost, saved with it and synced to its trackers. */
+	public static final AttachmentType<LimbState> LIMBS = AttachmentRegistry.<LimbState>builder()
+			.persistent(LimbState.CODEC)
+			.syncWith(LimbState.STREAM_CODEC, AttachmentSyncPredicate.all())
+			.buildAndRegister(id("limbs"));
+
 	/** How bloody a piece of gear is, 0..100. Purely cosmetic. */
 	public static final DataComponentType<Integer> BLOOD = Registry.register(
 			BuiltInRegistries.DATA_COMPONENT_TYPE,
@@ -62,6 +72,18 @@ public class Gore implements ModInitializer {
 		PayloadTypeRegistry.clientboundPlay().register(StainPayloads.AddPayload.TYPE, StainPayloads.ADD_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(StainPayloads.SyncPayload.TYPE, StainPayloads.SYNC_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(GorePayloads.DecalsGonePayload.TYPE, GorePayloads.GONE_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(Dismemberment.SeverPayload.TYPE, Dismemberment.SEVER_CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(GorePayloads.HelloPayload.TYPE, GorePayloads.HELLO_CODEC);
+
+		// Test-only: behave like a server without the mod, so the client's own
+		// simulation (ClientBleeding) is what draws the blood.
+		if (Boolean.getBoolean("gore.vanillaServer")) {
+			LOGGER.warn("gore.vanillaServer set: server half disabled, clients simulate blood");
+			return;
+		}
+
+		ServerPlayNetworking.registerGlobalReceiver(GorePayloads.HelloPayload.TYPE, (payload, context) -> {
+		});
 
 		Bleeding.init();
 		BloodTrail.init();

@@ -379,6 +379,34 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.waitTicks(130);
 			context.takeScreenshot("gore-body-humanoid-dry");
 
+			// Task 8c: dismemberment. A hard blow aimed at the husk's left arm
+			// (its left is +x: it faces the player) takes the arm off; the
+			// killing blow aimed at its head takes the head. Shot while the limb
+			// is in the air and after it has landed.
+			Vec3 huskArm = new Vec3(fx + 0.5 + 0.27, fy + 1.3, fz - 2.5);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, huskArm));
+			context.waitTicks(3);
+			singleplayer.getServer().runCommand(
+					"damage @e[type=minecraft:husk,limit=1] 70 minecraft:player_attack by @p");
+			context.waitTicks(6);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, huskChest));
+			context.waitTicks(2);
+			context.takeScreenshot("gore-sever-arm");
+			context.waitTicks(40);
+			context.takeScreenshot("gore-sever-arm-settled");
+
+			Vec3 huskHead = new Vec3(fx + 0.5, fy + 1.8, fz - 2.5);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, huskHead));
+			context.waitTicks(3);
+			singleplayer.getServer().runCommand(
+					"damage @e[type=minecraft:husk,limit=1] 1000 minecraft:player_attack by @p");
+			context.waitTicks(4);
+			context.runOnClient(mc -> mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, huskChest));
+			context.waitTicks(2);
+			context.takeScreenshot("gore-sever-head");
+			context.waitTicks(40);
+			context.takeScreenshot("gore-sever-head-settled");
+
 			// Task 9: the killing blow. The body lets go all at once: a pool
 			// spreads under it, spatter lands around it and jets empty the wound.
 			// Shot early, while the burst is still in the air, then again after

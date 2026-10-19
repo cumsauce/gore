@@ -1,5 +1,10 @@
 package dev.lume.gore.client;
 
+import dev.lume.gore.Limb;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3f;
+
 import dev.lume.gore.Drying;
 import dev.lume.gore.GoreStain;
 import java.util.List;
@@ -44,6 +49,10 @@ public class BodyDamageLayer extends RenderLayer<LivingEntityRenderState, Entity
 	 * five stains, so a mob has to be hit more than twice before it is soaked.
 	 */
 	private static final float SATURATION = 12.0f;
+	/** Fresh stains at which one part's coat is full: a hit leaves about five. */
+	private static final float LIMB_SATURATION = 7.0f;
+	/** Quantisation step of a stain's hit offset (see StainWounds). */
+	private static final float HIT_STEP = 1.0f / 32.0f;
 
 	/** The tint is a multiplier on the skin texture, so it stays dark: blood on skin, not paint. */
 	private static final int COAT_R = 116;
@@ -64,28 +73,18 @@ public class BodyDamageLayer extends RenderLayer<LivingEntityRenderState, Entity
 	@Override
 	public void submit(PoseStack poseStack, SubmitNodeCollector collector, int light,
 			LivingEntityRenderState state, float limbSwing, float limbSwingAmount) {
-		List<GoreStain> stains = null;
-		if (state instanceof FabricRenderState frs) {
-			stains = frs.getData(StainStateKeys.STAINS);
-		}
-		if (stains == null || stains.isEmpty()) {
+		if (!(state instanceof FabricRenderState frs)) {
 			return;
 		}
 
-		long now = Minecraft.getInstance().level != null
-				? Minecraft.getInstance().level.getGameTime()
-				: 0L;
-		float intensity = coatIntensity(stains, now);
-		if (intensity <= 0.0f) {
+		float[] coat = frs.getData(LimbRender.COAT);
+		Integer severed = frs.getData(LimbRender.SEVERED);
+		if (coat == null && (severed == null || severed == 0)) {
 			return;
 		}
 
 		EntityModel<LivingEntityRenderState> model = getParentModel();
-		if (model == null) {
-			return;
-		}
-
-		Identifier texture = renderer.getTextureLocation(state);
+		Identifier texture = model == null ? null : renderer.getTextureLocation(state);
 		if (texture == null) {
 			return;
 		}
@@ -95,13 +94,61 @@ public class BodyDamageLayer extends RenderLayer<LivingEntityRenderState, Entity
 		// whole mob turns into a flat red-brown silhouette.
 		RenderType renderType = RenderTypes.entityTranslucentCull(texture);
 
-		int alpha = Math.round(MIN_ALPHA + (MAX_ALPHA - MIN_ALPHA) * intensity);
-		int tint = ARGB.color(alpha, COAT_R, COAT_G, COAT_B);
+		// One pass per bloodied part, each drawing that part alone (see
+		// LimbRender): a slashed arm is a bloody arm, not a pink animal.
+		if (coat != null) {
+			for (Limb limb : Limb.values()) {
+				float intensity = coat[limb.ordinal()];
+				if (intensity <= 0.0f) {
+					continue;
+				}
+				int alpha = Math.round(MIN_ALPHA + (MAX_ALPHA - MIN_ALPHA) * intensity);
+				collector.submitModel(model, state, poseStack, renderType, light,
+						OverlayTexture.NO_OVERLAY, LimbRender.coatTint(limb, alpha), null, 0);
+			}
+		}
 
-		poseStack.pushPose();
-		collector.submitModel(model, state, poseStack, renderType, light,
-				OverlayTexture.NO_OVERLAY, tint, null, 0);
-		poseStack.popPose();
+		// The raw end of every cut-off arm or leg.
+		if (severed != null && severed != 0) {
+			for (Limb limb : Limb.values()) {
+				if (limb != Limb.HEAD && limb != Limb.TORSO && (severed & limb.bit()) != 0) {
+					collector.submitModel(model, state, poseStack, renderType, light,
+							OverlayTexture.NO_OVERLAY, LimbRender.stumpTint(limb), null, 0);
+				}
+			}
+		}
+	}
+
+	/**
+	 * The coat for each part, 0..1 by {@link Limb#ordinal()}: the wetness of
+	 * the stains whose hit point lands on that part. A part saturates with a
+	 * few fresh wounds; stains from before hit points existed count on the
+	 * torso.
+	 */
+	public static float[] limbCoat(List<GoreStain> stains, Entity entity, long now) {
+		float[] coat = new float[Limb.values().length];
+		if (stains.isEmpty()) {
+			return coat;
+		}
+		float yRot = entity.getYRot();
+		float width = entity.getBbWidth();
+		float height = entity.getBbHeight();
+		float eye = entity.getEyeHeight();
+		for (GoreStain stain : stains) {
+			Limb limb = Limb.TORSO;
+			if (stain.hasHit()) {
+				// Stains store the hit in the body frame (Bleeding.inBodyFrame:
+				// rotateY(yRot − 180°)); undo that to classify it like the server.
+				Vector3f world = new Vector3f(stain.hitX() * HIT_STEP, stain.hitY() * HIT_STEP, stain.hitZ() * HIT_STEP)
+						.rotateY((float) -Math.toRadians(yRot - 180.0f));
+				limb = Limb.classify(new Vec3(world.x, world.y, world.z), yRot, width, height, eye);
+			}
+			coat[limb.ordinal()] += 1.0f - Drying.dryness(stain.born(), now, Drying.SCALE);
+		}
+		for (int i = 0; i < coat.length; i++) {
+			coat[i] = Math.min(1.0f, coat[i] / LIMB_SATURATION);
+		}
+		return coat;
 	}
 
 	/**

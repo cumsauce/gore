@@ -69,6 +69,17 @@ public final class DecalRenderer {
 	private static final Set<Decal> DRIPPED = new HashSet<>();
 
 	private static DynamicTexture texture;
+	/**
+	 * LabPBR companions of {@link #texture}, same layout, registered as
+	 * {@code <id>_n} and {@code <id>_s}, the names shader loaders look up for a
+	 * texture's normal and specular maps.
+	 */
+	private static DynamicTexture normals;
+	private static DynamicTexture specular;
+	private static final float[] THICK = new float[BloodField.RES * BloodField.RES];
+	private static final float[] WET = new float[BloodField.RES * BloodField.RES];
+	private static final int[] NORMAL_PIXELS = new int[BloodField.RES * BloodField.RES];
+	private static final int[] SPEC_PIXELS = new int[BloodField.RES * BloodField.RES];
 	private static RenderType renderType;
 	private static final ModelPart[] SLOT_PARTS = new ModelPart[MAX_SLOTS];
 
@@ -120,6 +131,14 @@ public final class DecalRenderer {
 		texture.getPixels().fillRect(0, 0, SIZE, SIZE, 0);
 		texture.upload();
 		Minecraft.getInstance().getTextureManager().register(TEXTURE_ID, texture);
+		normals = new DynamicTexture(() -> "gore blood field normals", SIZE, SIZE, true);
+		normals.getPixels().fillRect(0, 0, SIZE, SIZE, 0xFF8080FF);
+		normals.upload();
+		Minecraft.getInstance().getTextureManager().register(TEXTURE_ID.withSuffix("_n"), normals);
+		specular = new DynamicTexture(() -> "gore blood field specular", SIZE, SIZE, true);
+		specular.getPixels().fillRect(0, 0, SIZE, SIZE, 0xFF000000);
+		specular.upload();
+		Minecraft.getInstance().getTextureManager().register(TEXTURE_ID.withSuffix("_s"), specular);
 		renderType = RenderTypes.entityTranslucent(TEXTURE_ID);
 
 		for (int i = 0; i < MAX_SLOTS; i++) {
@@ -279,6 +298,8 @@ public final class DecalRenderer {
 		int budget = BAKES_PER_FRAME;
 		boolean uploaded = false;
 		NativeImage image = texture.getPixels();
+		NativeImage normalImage = normals.getPixels();
+		NativeImage specImage = specular.getPixels();
 
 		for (Face face : FACES.values()) {
 			if (now < face.nextBake || budget <= 0) {
@@ -298,7 +319,7 @@ public final class DecalRenderer {
 			Direction dir = Direction.from3DDataValue(face.key.face());
 			int pu = BloodField.planeCoord(face.key.x(), face.key.y(), face.key.z(), Decal.axis1(dir));
 			int pv = BloodField.planeCoord(face.key.x(), face.key.y(), face.key.z(), Decal.axis2(dir));
-			boolean any = hasSurface(level, face.key, dir) && BloodField.bake(kernels, pu, pv, PIXELS);
+			boolean any = hasSurface(level, face.key, dir) && BloodField.bake(kernels, pu, pv, PIXELS, THICK, WET);
 
 			if (!any) {
 				face.visible = false;
@@ -318,9 +339,13 @@ public final class DecalRenderer {
 			int ox = (face.slot % SLOTS_PER_ROW) * RES;
 			int oy = (face.slot / SLOTS_PER_ROW) * RES;
 
+			BloodField.material(THICK, WET, NORMAL_PIXELS, SPEC_PIXELS);
+
 			for (int j = 0; j < RES; j++) {
 				for (int i = 0; i < RES; i++) {
 					image.setPixel(ox + i, oy + j, PIXELS[j * RES + i]);
+					normalImage.setPixel(ox + i, oy + j, NORMAL_PIXELS[j * RES + i]);
+					specImage.setPixel(ox + i, oy + j, SPEC_PIXELS[j * RES + i]);
 				}
 			}
 
@@ -330,6 +355,8 @@ public final class DecalRenderer {
 
 		if (uploaded) {
 			texture.upload();
+			normals.upload();
+			specular.upload();
 		}
 	}
 

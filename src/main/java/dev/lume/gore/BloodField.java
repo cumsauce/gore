@@ -164,7 +164,22 @@ public final class BloodField {
 	 * (row 0 is the face's +axis2 edge). Returns true if any texel is visible.
 	 */
 	public static boolean bake(List<Kernel> kernels, int pu, int pv, int[] out) {
+		return bake(kernels, pu, pv, out, null, null);
+	}
+
+	/**
+	 * As above, also writing each texel's film thickness (0..1, 0 where there
+	 * is no blood) to {@code thickOut} and its wetness (1 − dryness) to
+	 * {@code wetOut} when they are not null: the inputs of {@link #material}.
+	 */
+	public static boolean bake(List<Kernel> kernels, int pu, int pv, int[] out, float[] thickOut, float[] wetOut) {
 		boolean any = false;
+		if (thickOut != null) {
+			java.util.Arrays.fill(thickOut, 0, RES * RES, 0.0f);
+		}
+		if (wetOut != null) {
+			java.util.Arrays.fill(wetOut, 0, RES * RES, 0.0f);
+		}
 		// Only kernels whose support reaches this face can touch a texel: cull
 		// the rest once per face instead of once per texel.
 		Kernel[] near = new Kernel[kernels.size()];
@@ -240,6 +255,13 @@ public final class BloodField {
 				// rim where the film contracted as it dried.
 				float thick = Math.min(1.0f, (field - threshold) / 1.2f);
 				float edge = 1.0f - Math.min(1.0f, (field - threshold) / 0.15f);
+				if (thickOut != null) {
+					// A sliver of height even at the rim, so the edge reads as a lip.
+					thickOut[j * RES + i] = 0.08f + 0.92f * thick;
+				}
+				if (wetOut != null) {
+					wetOut[j * RES + i] = 1.0f - dry;
+				}
 				float shade = (1.0f - 0.45f * thick) * (1.0f - 0.35f * dry * edge);
 				float alpha = (0.78f + 0.22f * thick) * fade;
 				// Wet, thick blood is glossy: a sheen where the film bulges (a
@@ -255,6 +277,44 @@ public final class BloodField {
 		}
 
 		return any;
+	}
+
+	/**
+	 * LabPBR material maps for a baked face, from {@link #bake}'s thickness and
+	 * wetness: {@code normalOut} gets the surface normal of the film (RG, from
+	 * the thickness gradient, so pools and runs bulge and catch light), full
+	 * ambient occlusion (B) and the height (A); {@code specOut} gets smoothness
+	 * (R: glassy when wet, matte once dry), a water-like F0 of 0.02 (G),
+	 * subsurface scattering (B: light glows through a wet film) and no
+	 * emission (A = 255). Texels without blood get a flat, rough, empty texel.
+	 * Both are ARGB, like the colour bake.
+	 */
+	public static void material(float[] thick, float[] wet, int[] normalOut, int[] specOut) {
+		final float strength = 2.2f;
+		for (int j = 0; j < RES; j++) {
+			for (int i = 0; i < RES; i++) {
+				int k = j * RES + i;
+				float h = thick[k];
+				if (h <= 0.0f) {
+					normalOut[k] = ARGB.color(255, 128, 128, 255);
+					specOut[k] = ARGB.color(255, 0, 0, 0);
+					continue;
+				}
+				float dx = thick[j * RES + Math.min(RES - 1, i + 1)] - thick[j * RES + Math.max(0, i - 1)];
+				float dy = thick[Math.min(RES - 1, j + 1) * RES + i] - thick[Math.max(0, j - 1) * RES + i];
+				float nx = -dx * strength;
+				float ny = -dy * strength;
+				float len = (float) Math.sqrt(nx * nx + ny * ny + 1.0f);
+				nx /= len;
+				ny /= len;
+				normalOut[k] = ARGB.color(Math.round(255 * h),
+						Math.round(127.5f + 127.5f * nx), Math.round(127.5f + 127.5f * ny), 255);
+				float w = wet[k];
+				int smooth = Math.round(255 * (0.3f + 0.62f * w));
+				int sss = Math.round(65 + 120 * w * h);
+				specOut[k] = ARGB.color(255, smooth, 5, sss);
+			}
+		}
 	}
 
 	private static double segmentDist2(double u, double v, Kernel k) {

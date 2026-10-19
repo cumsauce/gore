@@ -22,6 +22,8 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.Level;
+import net.minecraft.core.particles.SimpleParticleType;
 
 /**
  * Server side: turns a damage event into bleeding. Light hits drip a few drops,
@@ -111,6 +113,7 @@ public final class Bleeding {
 						.add(impactDir.scale(0.25));
 
 		spawnParticles(level, wound, impactDir, severity, random);
+		Dismemberment.afterHit(level, victim, source, damageTaken, severity, hit, impactDir);
 
 		List<Decal> placed = collectDecals(level, victim, wound, impactDir, severity, random);
 
@@ -146,7 +149,7 @@ public final class Bleeding {
 	 * turns: a world-space offset would stay pointing the same compass way while
 	 * the body walked away from it.
 	 */
-	private static Vec3 inBodyFrame(Vec3 offset, float yRot) {
+	public static Vec3 inBodyFrame(Vec3 offset, float yRot) {
 		org.joml.Vector3f v = new org.joml.Vector3f((float) offset.x, (float) offset.y, (float) offset.z)
 				.rotateY((float) Math.toRadians(yRot - 180.0f));
 		return new Vec3(v.x, v.y, v.z);
@@ -166,7 +169,7 @@ public final class Bleeding {
 	 * fallback of nothing found returns null, and the stains then carry a zero
 	 * hit point the client resolves by inference, as it always did.
 	 */
-	private static Vec3 hitPoint(LivingEntity victim, DamageSource source, Vec3 impactDir) {
+	public static Vec3 hitPoint(LivingEntity victim, DamageSource source, Vec3 impactDir) {
 		Entity direct = source.getDirectEntity();
 		Entity attacker = source.getEntity();
 
@@ -182,9 +185,11 @@ public final class Bleeding {
 
 			// Only trust the attacker's gaze when it is pointed at the victim —
 			// sweeping a sword while running away should not put wounds where
-			// the attacker happens to be staring.
-			if (victim.getBoundingBox().clip(eye, eye.add(look.scale(6.0))).isPresent()) {
-				from = eye;
+			// the attacker happens to be staring. When it is, the blow lands
+			// where they aimed: an arm, a leg, the head (see Dismemberment).
+			java.util.Optional<Vec3> aimed = victim.getBoundingBox().clip(eye, eye.add(look.scale(6.0)));
+			if (aimed.isPresent()) {
+				return aimed.get().subtract(victim.position());
 			}
 		}
 
@@ -236,6 +241,8 @@ public final class Bleeding {
 		RandomSource random = victim.getRandom();
 		Vec3 feet = victim.position();
 		long now = level.getGameTime();
+		Vec3 killDir = impactDirection(victim, source);
+		Dismemberment.afterDeath(level, victim, source, hitPoint(victim, source, killDir), killDir, random);
 
 		// The corpse's own pool: a direct probe straight down, wider than the
 		// splatter probe and independent of which way the killing blow pointed.
@@ -276,12 +283,7 @@ public final class Bleeding {
 
 		// Sprays thrown four ways round, each a full-severity hit with its own
 		// jets, so the death reads from whichever side the player watches.
-		double turn = random.nextDouble() * Math.PI * 2.0;
-		for (int i = 0; i < BURST_SPRAYS; i++) {
-			double angle = turn + i * (Math.PI * 2.0 / BURST_SPRAYS);
-			Vec3 dir = new Vec3(Math.cos(angle), -0.15 + random.nextDouble() * 0.45, Math.sin(angle)).normalize();
-			spawnParticles(level, burst, dir, 1.0f, random);
-		}
+		burstParticles(sender(level), burst, random);
 
 		// The entity is gone: its stains have no body left to render on, and its
 		// trail bookkeeping would leak.
@@ -327,7 +329,7 @@ public final class Bleeding {
 		}
 	}
 
-	private static Vec3 impactDirection(LivingEntity victim, DamageSource source) {
+	public static Vec3 impactDirection(LivingEntity victim, DamageSource source) {
 		Entity direct = source.getDirectEntity();
 		Entity attacker = source.getEntity();
 
@@ -371,8 +373,36 @@ public final class Bleeding {
 	 * per-particle velocity instead of a randomised puff.
 	 */
 	private static void spawnParticles(ServerLevel level, Vec3 wound, Vec3 dir, float severity, RandomSource random) {
+		sprayParticles(sender(level), wound, dir, severity, random);
+	}
+
+	/**
+	 * Where a hit's particles go: the server sends each to the watching
+	 * clients ({@link #sender}); a client on a server without the mod spawns
+	 * them itself.
+	 */
+	public interface Emitter {
+		void emit(SimpleParticleType type, Vec3 at, Vec3 velocity);
+	}
+
+	static Emitter sender(ServerLevel level) {
+		return (type, at, v) -> level.sendParticles(type, at.x, at.y, at.z, 0, v.x, v.y, v.z, 1.0);
+	}
+
+	/** A kill's sprays: {@link #BURST_SPRAYS} full-severity sprays evenly round the body. */
+	public static void burstParticles(Emitter out, Vec3 burst, RandomSource random) {
+		double turn = random.nextDouble() * Math.PI * 2.0;
+		for (int i = 0; i < BURST_SPRAYS; i++) {
+			double angle = turn + i * (Math.PI * 2.0 / BURST_SPRAYS);
+			Vec3 dir = new Vec3(Math.cos(angle), -0.15 + random.nextDouble() * 0.45, Math.sin(angle)).normalize();
+			sprayParticles(out, burst, dir, 1.0f, random);
+		}
+	}
+
+	/** One hit's drops, mist and jets, each with its own velocity. */
+	public static void sprayParticles(Emitter out, Vec3 wound, Vec3 dir, float severity, RandomSource random) {
 		for (Vec3 drop : SprayModel.dropVelocities(dir, severity, random)) {
-			level.sendParticles(Gore.BLOOD_DROP, wound.x, wound.y, wound.z, 0, drop.x, drop.y, drop.z, 1.0);
+			out.emit(Gore.BLOOD_DROP, wound, drop);
 		}
 
 		// Mist is pushed clear of the victim along the travel direction: at the
@@ -381,7 +411,7 @@ public final class Bleeding {
 		// volume while still reading as coming from the impact.
 		Vec3 mistOrigin = wound.add(dir.scale(0.4));
 		for (Vec3 mist : SprayModel.mistVelocities(dir, severity, random)) {
-			level.sendParticles(Gore.BLOOD_MIST, mistOrigin.x, mistOrigin.y, mistOrigin.z, 0, mist.x, mist.y, mist.z, 1.0);
+			out.emit(Gore.BLOOD_MIST, mistOrigin, mist);
 		}
 
 		// Arterial jets: a few emitters that keep throwing droplets for a fraction
@@ -391,8 +421,7 @@ public final class Bleeding {
 		for (int i = 0; i < SprayModel.jetCount(severity); i++) {
 			Vec3 jetDir = SprayModel.coneDirection(dir, random, SPRAY_SPREAD * 0.5f);
 			double speed = 0.35 + 0.25 * severity;
-			level.sendParticles(Gore.BLOOD_JET, jetOrigin.x, jetOrigin.y, jetOrigin.z, 0,
-					jetDir.x * speed, jetDir.y * speed, jetDir.z * speed, 1.0);
+			out.emit(Gore.BLOOD_JET, jetOrigin, jetDir.scale(speed));
 		}
 	}
 
@@ -402,7 +431,7 @@ public final class Bleeding {
 	 * that takes a fifth of a mob's health already splashes the walls, while a
 	 * killing-size blow still saturates at 1.
 	 */
-	static float severity(float damageTaken, float maxHealth) {
+	public static float severity(float damageTaken, float maxHealth) {
 		return Mth.clamp((float) Math.sqrt(damageTaken / Math.max(4.0f, maxHealth)), 0.08f, 1.0f);
 	}
 
@@ -411,7 +440,7 @@ public final class Bleeding {
 	 * the horizontal down to steeply at the floor, each a full-severity ray of
 	 * {@link #collectDecals}. Capped at {@link #MAX_BURST_DECALS}.
 	 */
-	static List<Decal> burstDecals(ServerLevel level, LivingEntity victim, Vec3 burst, RandomSource random) {
+	public static List<Decal> burstDecals(Level level, LivingEntity victim, Vec3 burst, RandomSource random) {
 		List<Decal> placed = new ArrayList<>();
 		long now = level.getGameTime();
 
@@ -450,7 +479,7 @@ public final class Bleeding {
 	 * dense streak on the floor pointing the way the chunk was travelling. More
 	 * for a bigger body. A chunk thrown at a wall drops at the wall's foot.
 	 */
-	static List<Decal> gibSmears(ServerLevel level, LivingEntity victim, Vec3 burst, RandomSource random) {
+	public static List<Decal> gibSmears(Level level, LivingEntity victim, Vec3 burst, RandomSource random) {
 		int count = gibCount(victim.getBbWidth(), victim.getBbHeight(), random);
 		List<Decal> smears = new ArrayList<>(count);
 		long now = level.getGameTime();
@@ -507,7 +536,7 @@ public final class Bleeding {
 		return 6 + Math.round(severity * 22.0f);
 	}
 
-	private static List<Decal> collectDecals(ServerLevel level, LivingEntity victim, Vec3 wound, Vec3 dir, float severity, RandomSource random) {
+	public static List<Decal> collectDecals(Level level, LivingEntity victim, Vec3 wound, Vec3 dir, float severity, RandomSource random) {
 		List<Decal> placed = new ArrayList<>();
 
 		if (severity >= SPLATTER_SEVERITY) {

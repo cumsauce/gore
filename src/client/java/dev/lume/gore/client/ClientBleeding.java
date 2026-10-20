@@ -143,10 +143,14 @@ public final class ClientBleeding {
 			limb = Limb.TORSO;
 		}
 		state = state.hit(limb, Math.max(0.0f, taken) / Math.max(1.0f, victim.getMaxHealth()));
-		boolean cut = Dismemberment.cuts(source) && (dead
-				? limb != Limb.TORSO
-				: !(victim instanceof net.minecraft.world.entity.player.Player)
-						&& Dismemberment.shouldSever(limb, state.damage(limb), severity));
+		boolean bladed = Dismemberment.bladed(source);
+		if (dead) {
+			Limb killed = Dismemberment.cuts(source) ? Dismemberment.killCut(limb, bladed, RANDOM) : null;
+			limb = killed == null || state.isSevered(killed) ? Limb.TORSO : killed;
+		}
+		boolean cut = Dismemberment.cuts(source) && limb != Limb.TORSO && (dead
+				|| !(victim instanceof net.minecraft.world.entity.player.Player)
+						&& Dismemberment.shouldSever(limb, state.damage(limb), severity, bladed));
 		if (cut) {
 			state = state.sever(limb);
 			SeveredLimbs.sever(level, victim.getId(), limb, dir);

@@ -1,6 +1,9 @@
 package dev.lume.gore.gametest;
 
 import dev.lume.gore.Decal;
+import dev.lume.gore.Dismemberment;
+import dev.lume.gore.Limb;
+import dev.lume.gore.LimbState;
 import dev.lume.gore.DecalStore;
 import dev.lume.gore.client.DecalManager;
 import dev.lume.gore.client.DecalRenderer;
@@ -676,5 +679,84 @@ public class GoreClientGameTest implements FabricClientGameTest {
 			context.takeScreenshot(String.format("seq-break-%03d", i));
 		}
 		context.runOnClient(mc -> DecalManager.clear());
+
+		normalFight(context, singleplayer, fx, fy, fz);
+	}
+
+	/**
+	 * Dismemberment in an ordinary fight: no /damage, no inflated health. The
+	 * player swings an iron sword at a stock 20-health husk (a zombie that does not burn in daylight) through the real
+	 * attack path, waiting out the cooldown, aiming at its left arm. The arm
+	 * has to come off within four swings; then an iron axe finishes it.
+	 */
+	private static void normalFight(ClientGameTestContext context, TestSingleplayerContext singleplayer,
+			int fx, int fy, int fz) {
+		singleplayer.getServer().runCommand("difficulty easy");
+		singleplayer.getServer().runCommand("kill @e[type=!minecraft:player]");
+		singleplayer.getServer().runCommand(
+				"fill " + (fx - 4) + " " + fy + " " + (fz - 4) + " " + (fx + 4) + " " + (fy + 5) + " " + (fz - 4) + " stone");
+		context.runOnClient(mc -> {
+			DecalManager.clear();
+			mc.player.setPos(fx + 0.5, fy, fz + 0.5);
+		});
+		singleplayer.getServer().runCommand("summon minecraft:husk " + (fx + 0.5) + " " + fy + " " + (fz - 1.5)
+				+ " {NoAI:1b,PersistenceRequired:1b,Silent:1b,Rotation:[0f,0f]}");
+		singleplayer.getServer().runCommand("item replace entity @p weapon.mainhand with minecraft:iron_sword");
+		context.waitTicks(20);
+
+		// Its left arm is +x: it faces south, toward the player.
+		Vec3 arm = new Vec3(fx + 0.5 + 0.33, fy + 1.35, fz - 1.5);
+		boolean armOff = false;
+		for (int swing = 0; swing < 4 && !armOff; swing++) {
+			context.runOnClient(mc -> {
+				mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, arm);
+				net.minecraft.world.entity.Entity zombie = zombieNear(mc.level, mc.player);
+				if (zombie != null) {
+					mc.gameMode.attack(mc.player, zombie);
+				}
+			});
+			context.waitTicks(3);
+			context.takeScreenshot(String.format("seq-fight-sword-%03d", swing));
+			context.waitTicks(14); // iron sword cooldown is 12.5 ticks
+			armOff = singleplayer.getServer().computeOnServer(server -> {
+				net.minecraft.world.entity.monster.zombie.Husk z = server.getLevel(Level.OVERWORLD)
+						.getEntitiesOfClass(net.minecraft.world.entity.monster.zombie.Husk.class,
+								new net.minecraft.world.phys.AABB(new BlockPos(fx, fy, fz)).inflate(6)).stream().findFirst().orElse(null);
+				LimbState state = z == null ? LimbState.NONE : Dismemberment.state(z);
+				LOGGER.info("[gore-gametest] sword fight: zombie {} health {} limbs {}", z != null,
+						z == null ? 0 : z.getHealth(), state);
+				return state.isSevered(Limb.LEFT_ARM) || state.isSevered(Limb.RIGHT_ARM);
+			});
+		}
+		if (!armOff) {
+			throw new IllegalStateException("four iron-sword swings at a zombie's arm did not take it off");
+		}
+		context.takeScreenshot("seq-fight-arm-off");
+
+		singleplayer.getServer().runCommand("item replace entity @p weapon.mainhand with minecraft:iron_axe");
+		context.waitTicks(25);
+		Vec3 chest = new Vec3(fx + 0.5, fy + 1.2, fz - 1.5);
+		for (int swing = 0; swing < 4; swing++) {
+			context.runOnClient(mc -> {
+				mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, chest);
+				net.minecraft.world.entity.Entity zombie = zombieNear(mc.level, mc.player);
+				if (zombie != null) {
+					mc.gameMode.attack(mc.player, zombie);
+				}
+			});
+			for (int f = 0; f < 6; f++) {
+				context.waitTicks(1);
+				context.takeScreenshot(String.format("seq-fight-axe-%d-%02d", swing, f));
+			}
+			context.waitTicks(20); // iron axe cooldown is 25 ticks
+		}
+		context.takeScreenshot("seq-fight-end");
+		singleplayer.getServer().runCommand("difficulty peaceful");
+	}
+
+	private static net.minecraft.world.entity.Entity zombieNear(net.minecraft.client.multiplayer.ClientLevel level,
+			net.minecraft.world.entity.player.Player player) {
+		return level.getEntitiesOfClass(net.minecraft.world.entity.monster.zombie.Husk.class,
+				player.getBoundingBox().inflate(6)).stream().filter(e -> e.isAlive()).findFirst().orElse(null);
 	}
 }

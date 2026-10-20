@@ -64,4 +64,29 @@ class LimbTest {
 		assertFalse(s.isSevered(Limb.LEFT_ARM));
 		assertEquals(Limb.TORSO, s.hit(Limb.TORSO, 0.1f).lastLimb());
 	}
+
+	@Test
+	void blades_severInANormalFight() {
+		// Iron sword on a 20-health zombie: 6 damage, severity 0.3 per blow.
+		assertFalse(Dismemberment.shouldSever(Limb.LEFT_ARM, 0.3f, 0.3f), "fists and clubs still need a huge blow");
+		assertFalse(Dismemberment.shouldSever(Limb.LEFT_ARM, 0.15f, 0.3f, true), "one sword blow is not enough");
+		assertTrue(Dismemberment.shouldSever(Limb.LEFT_ARM, 0.3f, 0.3f, true), "the second one is");
+		assertFalse(Dismemberment.shouldSever(Limb.LEFT_LEG, 0.3f, 0.3f, true));
+		assertTrue(Dismemberment.shouldSever(Limb.LEFT_LEG, 0.45f, 0.3f, true));
+		assertFalse(Dismemberment.shouldSever(Limb.HEAD, 5.0f, 1.0f, true), "heads only come off on a kill");
+	}
+
+	@Test
+	void killCut_bladeToTheBody_sometimesTakesTheHead() {
+		net.minecraft.util.RandomSource r = net.minecraft.util.RandomSource.create(1L);
+		assertEquals(Limb.LEFT_ARM, Dismemberment.killCut(Limb.LEFT_ARM, false, r));
+		int heads = 0;
+		for (int i = 0; i < 1000; i++) {
+			if (Dismemberment.killCut(Limb.TORSO, true, r) == Limb.HEAD) {
+				heads++;
+			}
+			assertEquals(null, Dismemberment.killCut(Limb.TORSO, false, r));
+		}
+		assertTrue(heads > 400 && heads < 600, "heads " + heads);
+	}
 }

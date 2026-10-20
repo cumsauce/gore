@@ -9,6 +9,8 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
@@ -40,6 +42,18 @@ public final class Dismemberment {
 	static final float ARM_SEVERITY = 0.45f;
 	static final float LEG_SEVER = 0.45f;
 	static final float LEG_SEVERITY = 0.6f;
+
+	/**
+	 * A blade cuts far sooner. Tuned on a 20-health zombie: an iron sword hit
+	 * is 6 damage, severity 0.3, so two or three blows on one arm take it off
+	 * and a leg needs a few more; an axe (9) does it in one or two.
+	 */
+	static final float BLADE_ARM_SEVER = 0.25f;
+	static final float BLADE_ARM_SEVERITY = 0.2f;
+	static final float BLADE_LEG_SEVER = 0.4f;
+	static final float BLADE_LEG_SEVERITY = 0.25f;
+	/** Chance that a bladed killing blow to the body takes the head instead of nothing. */
+	static final float BLADE_KILL_HEAD = 0.5f;
 
 	/** Tells clients a limb just came off, so they can throw it and bleed the stump. */
 	public record SeverPayload(int entityId, int limb, Vec3 dir) implements CustomPacketPayload {
@@ -84,6 +98,12 @@ public final class Dismemberment {
 				|| source.is(DamageTypeTags.IS_EXPLOSION);
 	}
 
+	/** True when the blow was dealt with a sword or an axe. */
+	public static boolean bladed(DamageSource source) {
+		ItemStack weapon = source.getWeaponItem();
+		return weapon != null && (weapon.is(ItemTags.SWORDS) || weapon.is(ItemTags.AXES));
+	}
+
 	/**
 	 * Records a blow and cuts the limb off when it has had enough. Returns the
 	 * limb the blow struck (a limb already gone counts as the torso).
@@ -99,7 +119,8 @@ public final class Dismemberment {
 
 		state = state.hit(limb, damageTaken / Math.max(1.0f, victim.getMaxHealth()));
 
-		if (!(victim instanceof Player) && cuts(source) && shouldSever(limb, state.damage(limb), severity)) {
+		if (!(victim instanceof Player) && cuts(source)
+				&& shouldSever(limb, state.damage(limb), severity, bladed(source))) {
 			state = state.sever(limb);
 			victim.setAttached(Gore.LIMBS, state);
 			announce(level, victim, limb, impactDir);
@@ -112,6 +133,20 @@ public final class Dismemberment {
 
 	/** The thresholds above, as a pure function for the tests. */
 	public static boolean shouldSever(Limb limb, float accumulated, float severity) {
+		return shouldSever(limb, accumulated, severity, false);
+	}
+
+	/** As above; a sword or axe blow uses the much lower blade thresholds. */
+	public static boolean shouldSever(Limb limb, float accumulated, float severity, boolean bladed) {
+		if (bladed) {
+			if (limb.isArm()) {
+				return accumulated >= BLADE_ARM_SEVER && severity >= BLADE_ARM_SEVERITY;
+			}
+			if (limb.isLeg()) {
+				return accumulated >= BLADE_LEG_SEVER && severity >= BLADE_LEG_SEVERITY;
+			}
+			return false;
+		}
 		if (limb.isArm()) {
 			return accumulated >= ARM_SEVER && severity >= ARM_SEVERITY;
 		}
@@ -143,12 +178,27 @@ public final class Dismemberment {
 					announce(level, victim, pick, impactDir);
 				}
 			}
-		} else if (limb != Limb.TORSO && !state.isSevered(limb)) {
-			state = state.sever(limb);
-			announce(level, victim, limb, impactDir);
+		} else {
+			Limb cut = killCut(limb, bladed(source), random);
+			if (cut != null && !state.isSevered(cut)) {
+				state = state.sever(cut);
+				announce(level, victim, cut, impactDir);
+			}
 		}
 
 		victim.setAttached(Gore.LIMBS, state);
+	}
+
+	/**
+	 * What a killing blow takes off. A blow that struck a limb takes it. A
+	 * blade swung at the body — where a player normally aims — takes the head
+	 * half the time; anything else to the body takes nothing.
+	 */
+	public static Limb killCut(Limb struck, boolean bladed, RandomSource random) {
+		if (struck != Limb.TORSO) {
+			return struck;
+		}
+		return bladed && random.nextFloat() < BLADE_KILL_HEAD ? Limb.HEAD : null;
 	}
 
 	/**
